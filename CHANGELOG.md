@@ -2,6 +2,56 @@
 
 ## Unreleased
 
+- **An Anthropic Messages route no longer loses the turn over one tool entry
+  LiteLLM could not give a schema to.** `Union Alpha Free (opencode Go)`
+  travels the Messages protocol, so Codex's Responses tool list is mapped into
+  Anthropic tool objects by LiteLLM -- and that mapper stamps `input_schema`
+  only on the entries it recognized as an OpenAI function or freeform tool.
+  Codex's standalone hosted search tool declares the versioned spelling
+  `{"type": "web_search_20250305", "name": "web_search"}`, which the bridge
+  intercepts under the bare `web_search` spelling only, so it fell through to
+  the mapper's hosted branch and arrived as `{type, name}` with no schema at
+  all. Because that tool is declared last, the measured turn sent it as
+  `tools[262]`, and opencode's edge validates the whole array: the request was
+  refused with `tools[262] must have a string "name" and an object
+  "input_schema"` before the model saw it, on every turn carrying the app's
+  full tool surface. `src/api-forwarder.mjs` now repairs the one
+  Anthropic-shaped wire before it is forwarded -- an entry that lost its schema
+  keeps its name with an empty object root, an entry with no usable name is
+  dropped -- and reports both counts, because the model's tool surface changed
+  and an unattended service must not do that silently
+  (`test/anthropic-tool-entries.test.mjs`).
+- **A provider's content refusal now reads as one, instead of as raw JSON.**
+  DeepSeek answers `Content Exists Risk` when its own filter refuses a turn, and
+  Command Code relays it verbatim, so the operator saw a nested error object and
+  was left to guess whether a retry was worth it. `src/error-translation.mjs`
+  names the refusal, states that it is not retryable, and points at the only two
+  moves: change what is sent, or change which model serves it. It is
+  deliberately not classified as a failure kind -- a content refusal is not
+  evidence about provider health, so it must not cool a provider down or move a
+  later turn to another model on its own.
+- **Command Code's DeepSeek V4.1 Flash route takes images, and the hint that
+  hid it is gone.** `commandcode/deepseek-v4.1-flash` answered
+  `400 Invalid input` on every pasted screenshot because Codex marks a paste
+  with `detail: "original"` and Command Code's Provider API refuses that hint
+  while accepting the same image as `auto` -- the same quirk
+  `downgradeOriginalImageDetail` already handles for OpenCode.
+  `src/api-forwarder.mjs` now
+  downgrades it for both Command Code providers, and the route advertises image
+  input on a live probe rather than on the vendor's CLI registry: one 1×1 PNG
+  answers 200 with `detail: "auto"` and 400 with `"original"`, both against the
+  Provider API directly and through the router. A screenshot that arrives on a
+  tool or assistant turn -- what a screenshot-returning tool produces -- is
+  read by the model you are already using and substituted as a transcript
+  instead of failing the turn. No engine is nominated for that read, so a tool
+  screenshot never depends on a pinned or second-choice model; the Gemini-style
+  placeholder stays as the fallback when the bridge is switched off, and a
+  user-turn image is left alone in both layers because the model reads that one
+  itself.
+  `test/commandcode-forwarder.test.mjs` asserts the upstream body. Evidence,
+  plus the shapes the endpoint still refuses (bare-string `image_url`, the
+  Anthropic shape, `https://` URLs), is in
+  `docs/research/deepseek-v4-1-flash-2026-09-11.md`.
 - **Hy4's nonce-suffixed reasoning delimiters no longer leak the model's
   planning into the answer.** Hy4 Preview writes its own markup with a
   per-message nonce (`</think:6124c78e>`, the family

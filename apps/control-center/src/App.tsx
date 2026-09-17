@@ -112,6 +112,7 @@ export default function App() {
   const [theme, setTheme] = useState<"light" | "dark">(initialTheme);
   const [language, setLanguage] = useState<LanguageId>(detectLanguage);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [windowMaximized, setWindowMaximized] = useState(false);
   const [sidebarSearchOpen, setSidebarSearchOpen] = useState(false);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const [snapshot, setSnapshot] = useState<RouterSnapshot>();
@@ -132,6 +133,27 @@ export default function App() {
   const healthPollInFlight = useRef(false);
   const previousActivityState = useRef<string | undefined>(undefined);
   const readGenerations = useRef<Partial<Record<keyof RouterDataReady, number>>>({});
+
+  // 右上角窗控要在「最大化」和「还原」两套图标间切换；macOS 走原生红绿灯，不需要。
+  // 低版本 preload 可能没有这套 API，缺了就安静跳过，别把整个界面带崩。
+  useEffect(() => {
+    if (!api || api.platform === "darwin" || typeof api.getWindowState !== "function") return;
+    let cancelled = false;
+    void api.getWindowState()
+      .then((state) => {
+        if (!cancelled && state && typeof state.maximized === "boolean") setWindowMaximized(state.maximized);
+      })
+      .catch(() => { /* 读不到就保持默认的最大化图标 */ });
+    const unsubscribe = typeof api.onWindowState === "function"
+      ? api.onWindowState((state) => {
+        if (state && typeof state.maximized === "boolean") setWindowMaximized(state.maximized);
+      })
+      : () => {};
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [api]);
 
   const settleRead = useCallback(async <T,>(
     key: keyof RouterDataReady,
@@ -462,13 +484,6 @@ export default function App() {
     <div className={classNames("app-shell", nativeTitlebar && "native-titlebar", api && `native-titlebar-${api.platform}`, !sidebarOpen && "sidebar-collapsed")}>
       <aside className="app-sidebar" aria-label="Codex Router sidebar" inert={sidebarSearchOpen ? true : undefined}>
         <header className="sidebar-window-row">
-          {api && api.platform !== "darwin" && sidebarOpen ? (
-            <div className="traffic-lights">
-              <button type="button" className="traffic-light traffic-light-close" aria-label="Close window" onClick={() => void api.closeWindow()} />
-              <button type="button" className="traffic-light traffic-light-minimize" aria-label="Minimize window" onClick={() => void api.minimizeWindow()} />
-              <button type="button" className="traffic-light traffic-light-maximize" aria-label="Maximize or restore window" onClick={() => void api.toggleMaximizeWindow()} />
-            </div>
-          ) : null}
           <button className="sidebar-toggle" type="button" aria-label="Collapse sidebar" onClick={() => setSidebarOpen(false)}><PanelLeftClose aria-hidden size={15} strokeWidth={1.7} /></button>
           <button className="sidebar-toggle" type="button" aria-label="Go back" disabled={historyIndex === 0} onClick={() => moveHistory(-1)}><ArrowLeft aria-hidden size={15} strokeWidth={1.7} /></button>
           <button className="sidebar-toggle" type="button" aria-label="Go forward" disabled={historyIndex >= viewHistory.length - 1} onClick={() => moveHistory(1)}><ArrowRight aria-hidden size={15} strokeWidth={1.7} /></button>
@@ -500,13 +515,6 @@ export default function App() {
 
       <main className="app-main" inert={sidebarSearchOpen ? true : undefined}>
         <div className="titlebar">
-          {api && api.platform !== "darwin" && !sidebarOpen ? (
-            <div className="traffic-lights">
-              <button type="button" className="traffic-light traffic-light-close" aria-label="Close window" onClick={() => void api.closeWindow()} />
-              <button type="button" className="traffic-light traffic-light-minimize" aria-label="Minimize window" onClick={() => void api.minimizeWindow()} />
-              <button type="button" className="traffic-light traffic-light-maximize" aria-label="Maximize or restore window" onClick={() => void api.toggleMaximizeWindow()} />
-            </div>
-          ) : null}
           {!sidebarOpen ? <button className="titlebar-toggle" type="button" aria-label="Expand sidebar" onClick={() => setSidebarOpen(true)}><PanelLeftOpen aria-hidden size={15} strokeWidth={1.7} /></button> : null}
           <div className="title-tabs">
             <strong>{activeMeta.label}</strong>
@@ -516,6 +524,13 @@ export default function App() {
           <div className="titlebar-spacer" />
           {operation?.status === "started" ? <span className="title-operation"><LoaderCircle aria-hidden size={12} strokeWidth={1.7} className="spin" />{operation.message || operation.action}</span> : null}
           <button className="title-refresh" type="button" aria-label="Refresh all data" disabled={refreshing} onClick={() => void refreshAll()}><RefreshCw aria-hidden size={13} strokeWidth={1.7} className={refreshing ? "spin" : ""} /></button>
+          {api && api.platform !== "darwin" ? (
+            <div className="window-controls" role="group" aria-label="Window controls">
+              <button className="window-control" type="button" aria-label="Minimize window" onClick={() => void api.minimizeWindow()}><WindowControlIcon kind="minimize" /></button>
+              <button className="window-control" type="button" aria-label="Maximize or restore window" onClick={() => void api.toggleMaximizeWindow()}><WindowControlIcon kind={windowMaximized ? "restore" : "maximize"} /></button>
+              <button className="window-control window-control-close" type="button" aria-label="Close window" onClick={() => void api.closeWindow()}><WindowControlIcon kind="close" /></button>
+            </div>
+          ) : null}
         </div>
         <div className={classNames("page-scroll", `page-scroll-${view}`)}>
           {loadError || readError ? <InlineNotice tone="warning" title="Some router data could not load">{loadError || readError}</InlineNotice> : null}
@@ -541,4 +556,16 @@ function readableError(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error.trim()) return error;
   return "The router operation did not finish.";
+}
+
+// Windows 11  caption 图标：10px 网格、线性描边，尺寸和间距都按系统 caption 按钮来。
+function WindowControlIcon({ kind }: { kind: "minimize" | "maximize" | "restore" | "close" }) {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+      {kind === "minimize" ? <path d="M0 5h10" /> : null}
+      {kind === "maximize" ? <rect x="0.5" y="0.5" width="9" height="9" /> : null}
+      {kind === "restore" ? <><rect x="2.5" y="2.5" width="7" height="7" /><path d="M0.5 6.5V0.5h6.5" /></> : null}
+      {kind === "close" ? <path d="M0.5 0.5l9 9M9.5 0.5l-9 9" /> : null}
+    </svg>
+  );
 }

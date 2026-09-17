@@ -144,12 +144,67 @@ https://commandcode.ai/models/deepseek-v4-1-flash.
 - Price matches V4 Flash ($0.15 / $0.60 per M off-peak); available on Go and
   above.
 - Not documented: maximum output, effort values, tool_choice or
-  `reasoning_content` behavior. Image input appears only in marketing copy.
+  `reasoning_content` behavior. Image input appears in marketing copy
+  ("V4.1 hybrid-attention reasoning with vision") and in Command Code's own
+  client registry; the Provider API's `/models` response declares no
+  modalities at all, so it can neither confirm nor deny the capability.
+- **Rechecked 2026-09-15, and image input is real.** Command Code's published
+  CLI package (`command-code@1.54.0`, `dist/cli.mjs`) declares
+  `deepseek/deepseek-v4.1-flash` as `inputModalities: ["text","image"]` with the
+  same low/high/max ladder and 1,000,000-token context the route already
+  carried. The route was briefly widened on that evidence alone, reverted after
+  six `400 {"message":"Invalid input","param":"messages.N.content"}` answers,
+  and then proved out properly: the Provider API **does** take images on this
+  model, and the 400 was its refusal of one field.
+- Probed directly against
+  `POST https://api.commandcode.ai/provider/v1/chat/completions` with a 1×1 PNG
+  data URL. Accepted: `{"type":"text"}` + `{"type":"image_url","image_url":
+  {"url":"data:image/png;base64,…"}}` (200, and the model read the pixel), and
+  the same part with `detail: "auto"` (200). Refused with the same
+  `Invalid input` body: `image_url` as a bare string, the Anthropic
+  `{type:"image",source:{…}}` shape their own CLI builds, a Responses-style
+  `input_image` part, an `https://` URL instead of a data URL, and — the one
+  that mattered — the identical object part with `detail: "original"`.
+- Reproduced through the router with only that field varying: a Responses
+  request carrying `input_image` + `detail:"original"` returns the same 400 the
+  operator saw, `detail:"auto"` and no hint both return 200. So Codex's pasted
+  screenshots were failing on the OpenAI-only hint, not on the capability.
+  `src/api-forwarder.mjs` now downgrades the hint to `auto` for both Command
+  Code providers before the body leaves, and
+  `test/commandcode-forwarder.test.mjs` asserts the upstream body rather than
+  the helper.
+- A second shape surfaced from the operator's own failing turn rather than from
+  a probe: an image part on a **tool** turn. This endpoint takes images on user
+  turns only -- an image in `function_call_output` (a screenshot a tool
+  returned) or one on an assistant turn answers the same `400 Invalid input`
+  naming that message's content, and a recorded shape dump of the failing
+  request showed `messages[7].role = "tool"` holding a lone `image_url` part,
+  which is the `messages.7.content` the error named. Non-user image parts are
+  covered by two layers: the vision bridge reads the off-turn image and
+  substitutes the transcript -- **with the model the operator is already using
+  as the reader** (`offTurnImageEngines` in `src/vision-bridge.mjs`, applied by
+  `bridgeVisionInput`), never a nominated or pinned engine, so a tool
+  screenshot cannot depend on a second account being funded -- and
+  `sanitizeNonUserImageContent` in `src/api-forwarder.mjs` replaces the part
+  with a stated placeholder when no engine is resolvable -- the same trade
+  Google's endpoint already needed. A user turn is left alone in both layers:
+  the model reads that one itself.
+- Which routes on this provider can actually read a user-turn image, probed
+  through the router on 2026-09-15 with one 1x1 PNG: **yes** for
+  `deepseek/deepseek-v4.1-flash`, GLM-5.3 Flash, Kimi K3 (which also named the
+  colour), and Muse Spark 1.3; **400 Invalid input** for Qwen3.8 Flash and
+  Grok 4.6. Command Code's CLI registry claims image input for every one of
+  them, so a route's modality is worth one probe and never that registry's
+  word alone.
 
-Route: `commandcode/deepseek-v4.1-flash`, text-only until image input is
-verified at the API, window 1,000,000 compacting at 850,000. The low/high/max
-ladder is DeepSeek's documented ladder for this model, matching the existing
-Command Code V4 Flash route; it is not separately documented by Command Code.
+Route: `commandcode/deepseek-v4.1-flash`, text and image, window 1,000,000
+compacting at 850,000. The low/high/max ladder is DeepSeek's documented ladder
+for this model, matching the existing Command Code V4 Flash route; it is not
+separately documented by Command Code. Two limits worth knowing before widening
+another route on the same provider: the endpoint validates the image part
+strictly (the accepted shapes are listed above), and nothing here says the
+other Command Code models take images — their CLI registry claims image input
+for most of them, and that claim was worth exactly one 400 on this one.
 
 ## ClinePass (`clinepass`)
 

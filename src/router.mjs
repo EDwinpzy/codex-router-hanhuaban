@@ -219,6 +219,8 @@ import {
   hasNativeSession,
   inputHasImage,
   nativeAccountKey,
+  offTurnImageEngines,
+  refusesOffTurnImages,
   resolveVisionEngines,
   stripImages,
   substituteImages,
@@ -2235,9 +2237,18 @@ function reasoningItemText(item) {
 // model that reads images itself is never touched.
 async function bridgeVisionInput(input, route, request) {
   if (!inputHasImage(input)) return input;
-  if (supportsImageInput(route)) return input;
+  // A model that reads images itself needs no bridge -- except at a position
+  // its provider refuses. An image a screenshot-returning tool produced sits on
+  // a tool turn, where Command Code answers 400 for the whole turn, so that
+  // part is read for the model even though the model reads images. User turns
+  // are left alone: the model reads those itself, at no extra cost.
+  const offTurnOnly = supportsImageInput(route) && refusesOffTurnImages(route);
+  if (supportsImageInput(route) && !offTurnOnly) return input;
+  const skipItem = offTurnOnly ? (item) => item?.role === "user" : undefined;
   if (route.visionBridge === false) {
-    return stripImages(input, `${route.displayName || route.slug} cannot read images`).input;
+    return stripImages(input, `${route.displayName || route.slug} cannot read images`, {
+      skipItem,
+    }).input;
   }
   const settings = readVisionBridgeSettings();
   // Nothing below is evaluated unless `resolveVisionEngines` is actually going to
@@ -2259,15 +2270,26 @@ async function bridgeVisionInput(input, route, request) {
   // cannot be stale, so it has to hold too: without one there is no native
   // engine to nominate, and a pin naming one stops resolving on the very next
   // paste rather than at the next catalog rebuild.
-  const engines = resolveVisionEngines(
-    () => [
-      ...selectedConfiguredListedModels(),
-      ...(request && hasNativeSession(nativeHeaders(request))
-        ? installedNativeVisionEngines({ hidden: readHiddenModels() })
-        : []),
-    ],
-    settings,
-  );
+  const rankedEngines = () =>
+    resolveVisionEngines(
+      () => [
+        ...selectedConfiguredListedModels(),
+        ...(request && hasNativeSession(nativeHeaders(request))
+          ? installedNativeVisionEngines({ hidden: readHiddenModels() })
+          : []),
+      ],
+      settings,
+    );
+  // A route that reads images itself is the first reader for the parts its
+  // provider refuses, so nothing here depends on which engine is pinned. It is
+  // not the only reader: the loop below skips a provider that is cooling down
+  // or has just reported a quota, and a list of one turned that skip into every
+  // off-turn image failing at once -- measured 2026-09-17 as `images=2
+  // described=0 failed=2` on a route whose own provider was out of quota. The
+  // ranked engines follow as fallbacks and the route still answers first.
+  const engines = offTurnOnly
+    ? offTurnImageEngines(route, settings, rankedEngines)
+    : rankedEngines();
   if (!engines.length) {
     // The catalog only advertises image input while an engine resolves, so
     // this is the race where one went away mid-conversation, or a client that
@@ -2275,6 +2297,7 @@ async function bridgeVisionInput(input, route, request) {
     return stripImages(
       input,
       "the router's vision bridge is off or has no enabled vision model to read it with",
+      { skipItem },
     ).input;
   }
   const { effort } = settings;
@@ -2327,8 +2350,15 @@ async function bridgeVisionInput(input, route, request) {
     // operator's own engine is named first in the log line above it.
     throw lastError;
   };
-  const result = await substituteImages(input, (url, _ordinal, question) =>
-    readWithAnyEngine(url, question),
+  const result = await substituteImages(
+    input,
+    (url, _ordinal, question) => readWithAnyEngine(url, question),
+    {
+      skipItem,
+      ...(offTurnOnly
+        ? { because: "this provider takes an image only on a user turn" }
+        : {}),
+    },
   );
   // Never gated on QUIET, for the same reason the retry line is not: a
   // production LaunchAgent hard-sets `CODEX_ROUTER_QUIET=1`, and this is the
@@ -3618,7 +3648,16 @@ function subagentTransportFailoverCandidates({ request, route, agedInput, search
 }
 
 function routedRequestFits(route, body) {
-  const estimatedTokens = estimateInputTokens(body);
+  // Images are counted at the destination's documented per-image bound, not at
+  // the size of their base64. A transcript holding one full-screen screenshot
+  // carries megabytes of data URL that the byte ratio would charge as hundreds
+  // of thousands of tokens, which pushed a ~266K-token conversation past a 1M
+  // window here and refused the hop as `context-too-small` -- the same turn the
+  // candidate would have served. Offsets are deliberately not passed, so the
+  // estimate is not clamped to the window it is being compared against.
+  const estimatedTokens = estimateInputTokens(body, {
+    maxTokensPerImage: maxImageTokensForRoute(route),
+  });
   return (
     !Number.isFinite(estimatedTokens) ||
     !Number.isFinite(route?.contextWindow) ||

@@ -7,6 +7,13 @@ const routerControl = Object.freeze({
   minimizeWindow: () => call("minimizeWindow"),
   toggleMaximizeWindow: () => call("toggleMaximizeWindow"),
   closeWindow: () => call("closeWindow"),
+  getWindowState: () => call("getWindowState"),
+  onWindowState(listener) {
+    if (typeof listener !== "function") throw new TypeError("Window state listener must be a function.");
+    const wrapped = (_event, state) => listener(state);
+    ipcRenderer.on("router-control:window-state", wrapped);
+    return () => ipcRenderer.removeListener("router-control:window-state", wrapped);
+  },
   getSnapshot: () => call("getSnapshot"),
   getChatGptSession: () => call("getChatGptSession"),
   getChatGptAccountPool: () => call("getChatGptAccountPool"),
@@ -14,6 +21,7 @@ const routerControl = Object.freeze({
   getProviders: () => call("getProviders"),
   discoverProviderModels: (providerId, options) =>
     call("discoverProviderModels", { providerId, refresh: Boolean(options?.refresh) }),
+  testRoute: (slug) => call("testRoute", { slug }),
   getAccountUsage: () => call("getAccountUsage"),
   getProviderUsage: () => call("getProviderUsage"),
   getLocalModels: () => call("getLocalModels"),

@@ -51,7 +51,7 @@
 }
 
 .provider-brand-logo-fallback {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: calc(var(--provider-logo-size) * 0.28);
   font-weight: 720;
   letter-spacing: -0.04em;
@@ -94,7 +94,7 @@
   background: var(--surface-0);
   color: var(--ink-subtle);
   font: inherit;
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   font-weight: 540;
   cursor: pointer;
   white-space: nowrap;
@@ -146,7 +146,7 @@
   background: transparent;
   color: var(--ink-subtle);
   font: inherit;
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   text-align: left;
   cursor: pointer;
 }
@@ -174,7 +174,7 @@
 
 .pm-results-count {
   color: var(--ink-faint);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   white-space: nowrap;
 }
 
@@ -190,8 +190,8 @@
   display: block;
   margin-top: 3px;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8.5px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .pm-model-list[hidden] {
@@ -246,7 +246,7 @@
   display: block;
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 11px;
+  font-size: calc(11px * var(--fs-scale));
   font-weight: 610;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -254,7 +254,7 @@
 
 .pm-credential-form > label {
   color: var(--ink);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   font-weight: 570;
 }
 
@@ -265,7 +265,7 @@
 .pm-credential-form > p,
 .pm-credential-warning {
   color: var(--ink-subtle);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   line-height: 1.5;
 }
 
@@ -347,7 +347,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 11px;
+  font-size: calc(11px * var(--fs-scale));
   font-weight: 580;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -356,7 +356,7 @@
 .pm-model-identity span {
   overflow: hidden;
   color: var(--ink-subtle);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -366,8 +366,8 @@
   margin-top: 3px;
   overflow: hidden;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(8px * var(--fs-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -379,7 +379,7 @@
   flex-wrap: wrap;
   gap: 11px;
   color: var(--ink-subtle);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
 }
 
 .pm-model-meta > span:not(.badge) {
@@ -403,7 +403,7 @@
   align-items: center;
   gap: 7px;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .pm-model-effort {
@@ -411,7 +411,7 @@
   align-items: center;
   gap: 6px;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .pm-model-effort select {
@@ -419,7 +419,7 @@
   min-width: 92px;
   min-height: 27px;
   padding: 3px 22px 3px 7px;
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
 }
 
 .pm-model-row[data-subagent="enabled"] {
@@ -483,7 +483,7 @@
 .pm-family-state {
   min-width: 20px;
   color: var(--ink-faint);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   font-weight: 570;
   text-align: right;
 }
@@ -505,7 +505,7 @@
 .pm-family-main strong {
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--fs-scale));
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -514,7 +514,7 @@
 .pm-family-main small {
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -536,7 +536,7 @@
 .pm-family-route-note {
   padding: 9px 14px 9px 66px;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   line-height: 1.45;
 }
 
@@ -558,7 +558,7 @@
 .pm-route-head,
 .pm-route-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 78px 92px 70px 74px 104px;
+  grid-template-columns: minmax(0, 1fr) 78px 92px 70px 74px 104px 100px;
   align-items: center;
   column-gap: 12px;
   padding: 0 14px 0 64px;
@@ -568,7 +568,7 @@
   padding-top: 9px;
   padding-bottom: 6px;
   color: var(--ink-faint);
-  font-size: 8px;
+  font-size: calc(8px * var(--fs-scale));
   font-weight: 650;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -603,7 +603,7 @@
   grid-column: 1;
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 11px;
+  font-size: calc(11px * var(--fs-scale));
   font-weight: 580;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -612,7 +612,7 @@
 .pm-route-free {
   grid-column: 2;
   color: var(--success);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   font-weight: 600;
 }
 
@@ -621,15 +621,15 @@
   margin-top: 3px;
   overflow: hidden;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(8px * var(--fs-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pm-route-cell {
   color: var(--ink-subtle);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   white-space: nowrap;
 }
 
@@ -644,12 +644,40 @@
 
 .pm-route-none {
   color: var(--ink-faint);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
 }
 
 .pm-route-connect {
-  grid-column: 4 / -1;
+  /* Stops one column short so the live test keeps its own slot at the end of
+     the row whether or not this route has an account yet. */
+  grid-column: 4 / -2;
   justify-self: start;
+}
+
+.pm-route-test {
+  justify-self: start;
+}
+
+/* Sized to its column rather than to the shared button rules: it sits on a
+   50px row beside the switches, and the verdict has to fit one line. */
+.pm-route-test-button {
+  min-height: 26px;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: calc(10px * var(--fs-scale));
+}
+
+.pm-route-test-button[data-state="testing"] {
+  color: var(--ink-faint);
+}
+
+.pm-route-test-button[data-state="ok"] {
+  color: var(--success);
+}
+
+.pm-route-test-button[data-state="failed"] {
+  color: var(--danger);
 }
 
 /* The effort control, sized to its column so the row stays one line. */
@@ -672,7 +700,7 @@
   color: var(--ink-subtle);
   cursor: pointer;
   font: inherit;
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   white-space: nowrap;
 }
 
@@ -727,7 +755,7 @@
   color: var(--ink-subtle);
   cursor: pointer;
   font: inherit;
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   text-align: left;
   white-space: nowrap;
 }
@@ -776,13 +804,13 @@
 
 .pm-connections-label strong {
   color: var(--ink-strong);
-  font-size: 11px;
+  font-size: calc(11px * var(--fs-scale));
   font-weight: 650;
 }
 
 .pm-connections-label small {
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .pm-connections-chips {
@@ -808,7 +836,7 @@
   color: var(--ink-strong);
   cursor: pointer;
   font: inherit;
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   font-weight: 560;
   transition: background 130ms ease, border-color 130ms ease;
 }
@@ -850,7 +878,14 @@
 
 .pm-connect-menu {
   display: grid;
+  /* 这个 chip 在行尾，锚点靠右；原来用 left:0 向右展开，字体放大后会顶出窗口右缘，
+     右侧的凭据标签（API 密钥 / Sign-in / GitHub 令牌）就被窗口切掉。
+     改成右对齐向左展开，并按内容撑开，避免标签被挤。 */
+  left: auto;
+  right: 0;
+  width: max-content;
   min-width: 230px;
+  max-width: min(360px, calc(100vw - 40px));
   max-height: 320px;
   overflow-y: auto;
   padding: 5px;
@@ -868,7 +903,7 @@
   color: var(--ink-strong);
   cursor: pointer;
   font: inherit;
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   text-align: left;
 }
 
@@ -883,7 +918,7 @@
 
 .pm-connect-menu small {
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   white-space: nowrap;
 }
 
@@ -904,20 +939,20 @@
 .pm-connection-menu-head strong {
   display: block;
   color: var(--ink-strong);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--fs-scale));
   font-weight: 610;
 }
 
 .pm-connection-menu-head small,
 .pm-connection-menu-usage {
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .pm-connection-menu-copy {
   margin: 0;
   color: var(--ink-subtle);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   line-height: 1.5;
 }
 
@@ -929,7 +964,7 @@
   padding-top: 10px;
   border-top: 1px solid var(--line);
   color: var(--ink-subtle);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
 }
 
 .pm-connection-menu-actions {
@@ -953,7 +988,7 @@
   margin: 0;
   padding: 11px 14px 4px;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   font-weight: 650;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -961,7 +996,7 @@
 
 .pm-group-heading small {
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   font-weight: 560;
   letter-spacing: 0;
 }
@@ -972,7 +1007,7 @@
 
 .pm-model-control-note {
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   white-space: nowrap;
 }
 
@@ -1035,7 +1070,7 @@
 .pm-add-models-identity strong {
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs-scale));
   font-weight: 590;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1045,7 +1080,7 @@
 .pm-add-models-provider,
 .pm-add-models-meta > span {
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   white-space: nowrap;
 }
 
@@ -1062,58 +1097,14 @@
   justify-content: space-between;
   gap: 10px;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
 }
 
 .pm-add-models-hint {
   margin-right: auto;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   line-height: 1.45;
-}
-
-.pm-model-details {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 10px 24px;
-  margin: 0;
-  padding: 13px 14px 13px 64px;
-}
-
-.pm-model-details > div {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-
-.pm-model-details dt {
-  color: var(--ink-faint);
-  font-size: 8.5px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.pm-model-details dd {
-  margin: 0;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--ink-subtle);
-  font-size: 10px;
-  text-overflow: ellipsis;
-}
-
-.pm-model-details-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9.5px !important;
-}
-
-.pm-model-details dd.pm-model-details-controls {
-  overflow: visible;
-}
-
-.pm-model-details .pm-subagent-controls {
-  margin-top: -2px;
 }
 
 .pm-icon-trigger {
@@ -1170,7 +1161,6 @@
   }
 
 .pm-family-route-note,
-  .pm-model-details,
   .pm-route-head,
   .pm-route-row {
     padding-left: 14px;

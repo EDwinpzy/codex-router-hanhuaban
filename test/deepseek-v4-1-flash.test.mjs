@@ -67,8 +67,13 @@ test("DeepSeek V4.1 Flash on Command Code uses the Provider API chat route", () 
   assert.deepEqual(model.reasoningLevels.map(({ effort }) => effort), ["low", "high", "max"]);
   assert.equal(model.contextWindow, 1_000_000);
   assert.ok(model.contextWindow - model.autoCompact >= MAX_EFFORT_DEFAULT_OUTPUT);
-  // Image input is claimed only in marketing copy, not at the API.
-  assert.deepEqual(model.inputModalities, ["text"]);
+  // Image input is proved at the API, not taken from the CLI registry: the
+  // Provider API answers 200 to the OpenAI image part this route sends, and the
+  // 400 that looked like a missing capability was its refusal of the
+  // `detail: "original"` hint Codex attaches to a pasted screenshot. That hint
+  // is downgraded on the way out (src/api-forwarder.mjs), which is what makes
+  // the modality honest rather than optimistic.
+  assert.deepEqual(model.inputModalities, ["text", "image"]);
   assert.notEqual(model.multiAgentVersion, "v2");
   assert.equal(curatedModelProviderId("commandcode", "deepseek/deepseek-v4.1-flash"), "commandcode");
   assert.equal(curatedModelBlockReason("commandcode", "deepseek/deepseek-v4.1-flash"), undefined);

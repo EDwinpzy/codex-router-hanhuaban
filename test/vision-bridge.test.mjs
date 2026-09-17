@@ -18,6 +18,8 @@ import {
   missingEvidenceSections,
   nativeAccountKey,
   nativeVisionCandidates,
+  offTurnImageEngines,
+  refusesOffTurnImages,
   nativeVisionEngine,
   latestQuestion,
   questionForImage,
@@ -1719,4 +1721,135 @@ test("substituteImages replaces an image part with the engine's caption", async 
     content.every((part) => part?.type !== "input_image"),
     "the image part is gone after substitution",
   );
+});
+
+// A provider that takes an image only on a user turn refuses the screenshot a
+// tool returned, and refuses the turn with it. Those parts are read for the
+// model even when the model reads images itself -- but only those: a user turn
+// is the model's own work and must not be paid for twice.
+test("only the off-user-turn images are bridged when the provider refuses them there", async () => {
+  const userImage = "data:image/png;base64,USER";
+  const toolImage = "data:image/png;base64,TOOL";
+  const input = [
+    { type: "message", role: "user", content: [
+      { type: "input_text", text: "what is in this screenshot?" },
+      { type: "input_image", image_url: userImage, detail: "original" },
+    ] },
+    { type: "function_call", call_id: "call_1", name: "screenshot", arguments: "{}" },
+    { type: "function_call_output", call_id: "call_1", output: [
+      { type: "input_text", text: "captured" },
+      { type: "input_image", image_url: toolImage },
+    ] },
+  ];
+  const describedUrls = [];
+  const result = await substituteImages(
+    input,
+    async (url) => {
+      describedUrls.push(url);
+      return { text: "## Summary\nA terminal window.", engineName: "commandcode/deepseek-v4.1-flash" };
+    },
+    {
+      skipItem: (item) => item?.role === "user",
+      because: "this provider takes an image only on a user turn",
+    },
+  );
+  assert.deepEqual(describedUrls, [toolImage], "the user turn is never read for");
+  assert.equal(result.images, 1);
+  assert.equal(result.described, 1);
+  const userContent = result.input[0].content;
+  assert.ok(
+    userContent.some((part) => part?.type === "input_image" && part.image_url === userImage),
+    "the model's own image stays in place to be read natively",
+  );
+  const toolOutput = result.input[2].output;
+  assert.equal(
+    JSON.stringify(toolOutput).includes(toolImage),
+    false,
+    "the refused position carries no image part any more",
+  );
+  assert.match(JSON.stringify(toolOutput), /only on a user turn/);
+});
+
+test("stripImages honours the same skip, so a no-engine install keeps user images", () => {
+  const input = [
+    { type: "message", role: "user", content: [
+      { type: "input_image", image_url: "data:image/png;base64,USER" },
+    ] },
+    { type: "function_call_output", call_id: "call_1", output: [
+      { type: "input_image", image_url: "data:image/png;base64,TOOL" },
+    ] },
+  ];
+  const result = stripImages(input, "no engine", {
+    skipItem: (item) => item?.role === "user",
+  });
+  assert.equal(result.images, 1);
+  assert.equal(result.input[0].content[0].type, "input_image");
+  assert.equal(
+    JSON.stringify(result.input[1].output).includes("TOOL"),
+    false,
+    "the refused position is the only one replaced",
+  );
+});
+
+test("the off-turn rule names the providers it was verified against", () => {
+  assert.equal(refusesOffTurnImages({ provider: "commandcode" }), true);
+  assert.equal(refusesOffTurnImages({ provider: "commandcode-messages" }), true);
+  // Unknown providers keep the old behaviour: send the image and let the
+  // upstream decide, rather than reading it a second time on spec.
+  assert.equal(refusesOffTurnImages({ provider: "deepseek" }), false);
+  assert.equal(refusesOffTurnImages({ provider: "openrouter" }), false);
+  assert.equal(refusesOffTurnImages({}), false);
+});
+
+// The operator asked for exactly this: no pinned engine, no nominated model.
+// The route in use is the *first* reader, whatever it happens to be.
+test("an off-turn read uses the model in use, never a nominated engine", () => {
+  const route = {
+    slug: "commandcode/deepseek-v4.1-flash",
+    displayName: "DeepSeek V4.1 Flash (Command Code)",
+    gatewayModel: "commandcode-deepseek-v4-1-flash",
+    provider: "commandcode",
+    inputModalities: ["text", "image"],
+  };
+  assert.deepEqual(offTurnImageEngines(route, { enabled: true }), [route]);
+  // A pin elsewhere does not change it: the pinned engine is not consulted.
+  assert.deepEqual(
+    offTurnImageEngines(route, { enabled: true, engine: "commandcode/kimi-k3" }),
+    [route],
+  );
+  // Switching the bridge off still means "do not spend on a read".
+  assert.deepEqual(offTurnImageEngines(route, { enabled: false }), []);
+  assert.deepEqual(offTurnImageEngines(undefined, { enabled: true }), []);
+});
+
+// Measured 2026-09-17: the route's own provider was out of quota, the reading
+// loop skipped it as cooling down, and a reader list of one failed every
+// off-turn image of the turn (`images=2 described=0 failed=2`).
+test("an off-turn read falls back instead of dying with the route's provider", () => {
+  const route = {
+    slug: "commandcode/deepseek-v4.1-flash",
+    displayName: "DeepSeek V4.1 Flash (Command Code)",
+    gatewayModel: "commandcode-deepseek-v4-1-flash",
+    provider: "commandcode",
+    inputModalities: ["text", "image"],
+  };
+  const ranked = [
+    route,
+    { slug: "gpt-5.6-luna", displayName: "GPT 5.6 Luna" },
+    { slug: "opencode-go/deepseek-v4.1-flash", displayName: "DeepSeek V4.1 Flash (opencode Go)" },
+    { slug: "past-the-attempt-budget/never-used", displayName: "Fourth" },
+  ];
+  const engines = offTurnImageEngines(route, { enabled: true }, () => ranked);
+  assert.deepEqual(
+    engines.map((model) => model.slug),
+    ["commandcode/deepseek-v4.1-flash", "gpt-5.6-luna", "opencode-go/deepseek-v4.1-flash"],
+    "the route answers first, the ranked engines follow, the route is not repeated",
+  );
+  assert.equal(engines[0], route);
+  // A plain list works as well as the lazy one, and removing the fallbacks
+  // leaves the previous answer intact.
+  assert.equal(offTurnImageEngines(route, { enabled: true }, ranked).length, 3);
+  assert.deepEqual(offTurnImageEngines(route, { enabled: true }, []), [route]);
+  // The switch is still the switch: off means no read is spent at all.
+  assert.deepEqual(offTurnImageEngines(route, { enabled: false }, () => ranked), []);
 });

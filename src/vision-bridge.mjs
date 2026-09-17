@@ -190,6 +190,48 @@ export function supportsImageInput(model) {
   return Array.isArray(model?.inputModalities) && model.inputModalities.includes("image");
 }
 
+// Providers whose chat-completions contract takes an image part only on a user
+// turn. An image anywhere else is refused by the provider itself -- a 400 that
+// costs the whole turn -- so those parts are read for the model rather than
+// sent. Verified against Command Code's Provider API (400 Invalid input naming
+// the message content, with the shape recorded from the operator's own failing
+// turn); Google's OpenAI-compatible endpoint and OpenCode's client path refuse
+// the same position, and those two carry their own handling.
+const USER_TURN_ONLY_IMAGE_PROVIDERS = new Set([
+  "commandcode",
+  "commandcode-messages",
+]);
+
+export function refusesOffTurnImages(model) {
+  return USER_TURN_ONLY_IMAGE_PROVIDERS.has(String(model?.provider || ""));
+}
+
+// The model the operator is already using reads its own off-turn screenshots.
+// Naming a second model here would make a tool screenshot depend on whichever
+// engine happens to be pinned or to rank first -- a separate account, a
+// separate quota, and a second provider that can be down on its own. The route
+// reads images itself, so it needs no nomination: it is the engine, and it
+// stays first here. An operator who switched the bridge off still gets the
+// stated placeholder instead of a read they did not ask for.
+//
+// It cannot be the *only* engine, though. The reading loop in the router skips
+// any provider that is cooling down after a quota or rate-limit answer, and a
+// list of one turns that skip into a failure -- measured 2026-09-17 as
+// `images=2 described=0 failed=2` on a route whose own provider had run out of
+// quota, which left every off-turn screenshot in the turn unread. `fallbacks`
+// is the same ranked engine list the bridge uses everywhere else, consulted
+// only if the route itself is skipped or errors; on the happy path nothing
+// extra is spent and the route is still the model that reads the image.
+export function offTurnImageEngines(route, settings, fallbacks) {
+  if (settings?.enabled === false) return [];
+  if (!route) return [];
+  const rest = typeof fallbacks === "function" ? fallbacks() : fallbacks;
+  const alternates = (Array.isArray(rest) ? rest : []).filter(
+    (model) => model?.slug && model.slug !== route.slug,
+  );
+  return [route, ...alternates].slice(0, VISION_ENGINE_ATTEMPTS);
+}
+
 export function visionCapableModels(models) {
   return (Array.isArray(models) ? models : []).filter((model) => supportsImageInput(model));
 }
@@ -601,11 +643,13 @@ function partialReadNotice(text) {
   );
 }
 
-export function evidenceBlock(text, { ordinal, engineName, source = "" }) {
+export function evidenceBlock(text, { ordinal, engineName, source = "", because } = {}) {
   const label = source ? `Image ${ordinal} (path=${source})` : `Image ${ordinal}`;
   const partial = partialReadNotice(text);
   return [
-    `[${label} — read for you by ${engineName} because this model cannot see images.`,
+    `[${label} — read for you by ${engineName} because ${
+      because || "this model cannot see images"
+    }.`,
     partial ||
       (source
         ? "This is the full reading of that file; you do not need to open it again."
@@ -1137,7 +1181,7 @@ async function runBounded(jobs, limit, run) {
   await Promise.all(workers);
 }
 
-export async function substituteImages(input, describe) {
+export async function substituteImages(input, describe, { skipItem, because } = {}) {
   if (!Array.isArray(input)) return { input, images: 0, described: 0, failed: 0 };
   const paths = viewImagePaths(input);
   // The newest image is read for the newest question; everything older keeps
@@ -1156,7 +1200,7 @@ export async function substituteImages(input, describe) {
       const asked = questionForImage(item);
       if (asked) lastQuestion = asked;
     }
-    if (!hasImagePart(item)) {
+    if (!hasImagePart(item) || skipItem?.(item)) {
       plan.push({ item });
       continue;
     }
@@ -1234,6 +1278,7 @@ export async function substituteImages(input, describe) {
       ordinal: job.ordinal,
       engineName: job.engineName,
       source: job.source,
+      because,
     });
   }
 
@@ -1257,12 +1302,12 @@ export async function substituteImages(input, describe) {
 // say `input_text`, chat completions and Anthropic messages both say `text`.
 // Substituting the wrong one trades an image the provider rejects for a text
 // part it rejects, which is no improvement at all.
-export function stripImages(input, reason, { textPartType = "input_text" } = {}) {
+export function stripImages(input, reason, { textPartType = "input_text", skipItem } = {}) {
   if (!Array.isArray(input)) return { input, images: 0 };
   let ordinal = 0;
   const paths = viewImagePaths(input);
   const output = input.map((item) => {
-    if (!hasImagePart(item)) return item;
+    if (!hasImagePart(item) || skipItem?.(item)) return item;
     const field = imagePartsField(item);
     const content = item[field].map((part, index) => {
       if (imageUrlOf(part) === undefined) return part;

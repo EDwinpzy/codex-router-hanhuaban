@@ -122,6 +122,7 @@ if (!selfReplacingControl && !boundedOperationChild(process.env, {
     timeoutMs: maximumControlOperationMs,
     maximumMs: maximumControlOperationMs,
   });
+  const interactive = Boolean(process.stdout?.isTTY || process.stdin?.isTTY);
   const result = await runOperationProcessTree(process.execPath, [SELF, ...args], {
     cwd: REPO_ROOT,
     env: process.env,
@@ -129,8 +130,20 @@ if (!selfReplacingControl && !boundedOperationChild(process.env, {
       CODEX_ROUTER_OPERATION_CHILD: "1",
     },
     deadline,
-    stdio: "inherit",
+    // GUI hosts (control center tray) have no console to inherit; "inherit"
+    // there forces Windows to allocate a fresh visible console, which flashes
+    // a PowerShell window on every background status poll. Keep "inherit"
+    // only for real TTY sessions and use captured pipes elsewhere.
+    stdio: interactive ? "inherit" : "pipe",
   });
+  if (!interactive) {
+    // A captured child is not attached to this process's handles, so a caller
+    // that spawned us for our stdout -- the Control Center's JSON reads -- would
+    // otherwise see nothing and report "Router returned invalid JSON". Forward
+    // what the bounded child produced before reporting its status.
+    if (result.stdout && !process.stdout?.destroyed) process.stdout.write(result.stdout);
+    if (result.stderr && !process.stderr?.destroyed) process.stderr.write(result.stderr);
+  }
   process.exit(result.status ?? 1);
 }
 
@@ -918,6 +931,45 @@ async function probeProvider(providerId, flags) {
   }
   const { providerOnboardingSnapshot } = await import("./provider-onboarding.mjs");
   process.stdout.write(`${JSON.stringify(providerOnboardingSnapshot())}\n`);
+}
+
+// The Models page asks one question per account row: does this route still
+// answer? One minimal live request through exactly that route is the honest
+// test, and `smokeTestModel` already pins it (the exact-route marker keeps
+// failover from answering for a different account). Both --live and --yes are
+// required because the request bills whoever serves the route.
+//
+// A route that answers badly is a *result*, not an operational failure, so the
+// process still exits 0 and the verdict travels in the payload. An unknown
+// route, a missing caller key, or an expired deadline still throws.
+async function testRoute(slug, flags) {
+  const allowed = new Set(["--live", "--yes", "--json"]);
+  const unknown = flags.find((flag) => !allowed.has(flag));
+  if (unknown) {
+    throw new Error(
+      `Unknown route test option: ${unknown}. ` +
+        "Usage: control test-route <model> --live --yes [--json]",
+    );
+  }
+  if (!flags.includes("--live") || !flags.includes("--yes")) {
+    throw new Error(
+      "A live route test may use provider quota; pass --live --yes to confirm. " +
+        "Usage: control test-route <model> --live --yes [--json]",
+    );
+  }
+  if (!slug || slug.startsWith("--")) {
+    throw new Error("Usage: control test-route <model> --live --yes [--json]");
+  }
+  const { smokeTestModel } = await import("./smoke-test.mjs");
+  const result = await smokeTestModel(slug);
+  const detail = result.ok
+    ? "live response marker verified"
+    : result.error || "live response marker missing";
+  if (flags.includes("--json")) {
+    process.stdout.write(`${JSON.stringify({ ...result, detail })}\n`);
+    return;
+  }
+  process.stdout.write(`${result.ok ? "PASS" : "FAIL"} ${result.model}: ${detail}\n`);
 }
 
 async function invalidateProviderCatalog(providerId) {
@@ -3474,6 +3526,8 @@ if (args.includes("--probe")) {
     throw new Error("Usage: control catalog-cache invalidate <provider>");
   }
   await invalidateProviderCatalog(args[2]);
+} else if (args[0] === "test-route") {
+  await testRoute(args[1], args.slice(2));
 } else if (args[0] === "credential") {
   if (!args[1]) throw new Error("Usage: control credential <provider> [--remove]");
   if (args.includes("--remove")) {

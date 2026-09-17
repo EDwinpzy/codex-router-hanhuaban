@@ -375,6 +375,15 @@ export interface ProviderSetup {
   signInAction?: string;
 }
 
+/** The verdict of one live request pinned to a single route. */
+export interface RouteTestResult {
+  model: string;
+  ok: boolean;
+  status?: number;
+  /** The router's own account of the answer: the marker it verified, or why it did not. */
+  detail: string;
+}
+
 export interface ProviderCatalog {
   provider: string;
   discovered: string[];
@@ -764,12 +773,16 @@ export interface RouterControlApi {
   minimizeWindow(): Promise<unknown>;
   toggleMaximizeWindow(): Promise<unknown>;
   closeWindow(): Promise<unknown>;
+  getWindowState(): Promise<{ maximized: boolean }>;
+  onWindowState(listener: (state: { maximized: boolean }) => void): () => void;
   getSnapshot(): Promise<RouterSnapshot>;
   getChatGptSession(): Promise<ChatGptSessionStatus>;
   getChatGptAccountPool(): Promise<ChatGptAccountPool>;
   getHealth(): Promise<RouterHealth>;
   getProviders(): Promise<ProviderSetupSnapshot>;
   discoverProviderModels(provider: string, options?: { refresh?: boolean }): Promise<ProviderCatalog>;
+  /** One live request through exactly this route, for the Models page test button. */
+  testRoute(slug: string): Promise<RouteTestResult>;
   getAccountUsage(): Promise<AccountUsage>;
   getProviderUsage(): Promise<ProviderUsageSnapshot>;
   getLocalModels(): Promise<LocalModelsSnapshot>;

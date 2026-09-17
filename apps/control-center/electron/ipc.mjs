@@ -173,6 +173,16 @@ const SESSION_LIST_LIMIT = 500;
 // status/platform/readiness envelope. The runner and control owner retain
 // their process-tree cleanup margins outside the 1,280-second transaction.
 const CATALOG_MUTATION_TIMEOUT_MS = 1_320_000;
+// The first screen asks for the snapshot, the provider list, and presence at
+// the same time, and every read is its own Node child. A cold start -- a
+// checkout that was just updated, a service still coming up, or an operating
+// system scanning eight new node.exe images -- can spend far more than the
+// runner's 30-second default before the first command answers. That default
+// was the tightest budget in this app and the only one left alone, so a
+// slow-but-healthy start painted "Router command timed out." over a router
+// that was about to answer. Give the three reads the whole first screen
+// depends on room to be slow without being called broken.
+const CORE_READ_TIMEOUT_MS = 90_000;
 // Provider usage combines the local retained ledger with optional account
 // quota reads. OAuth refreshes alone may take 30 seconds, and a rejected token
 // can require a second refresh before the provider answers. Keep this aligned
@@ -184,6 +194,12 @@ const PROVIDER_USAGE_TIMEOUT_MS = 120_000;
 // catalog ceiling is not enough headroom for a slow provider, and a timeout
 // here reads to the operator as "your model failed" when it did not.
 const SUBAGENT_CERTIFY_TIMEOUT_MS = 600_000;
+// One minimal live request per route. It is a single short turn, but a slow
+// provider can spend a minute on it, and a timeout here reads to the operator
+// as "this account is broken" when it was only slow. Give the route test the
+// same 180-second envelope its own request carries, plus the runner's margin
+// for terminating the child tree.
+const ROUTE_TEST_TIMEOUT_MS = 200_000;
 const ROUTER_BROWSER_OAUTH_TIMEOUT_MS = 11 * 60_000;
 // The live compatibility request and the managed service readiness gate share
 // one ten-minute budget. The command runner gets one extra minute solely to
@@ -1234,8 +1250,8 @@ function oneOf(value, values, label) {
   return value;
 }
 
-async function snapshot() {
-  return runControlJson(["--json"]);
+async function snapshot(options = {}) {
+  return runControlJson(["--json"], options);
 }
 
 async function readInstalledControlHealth({ fetchImpl = globalThis.fetch } = {}) {
@@ -1480,7 +1496,7 @@ export function registerIpcHandlers({
     })(event, input));
   });
 
-  handle("getSnapshot", async () => snapshot());
+  handle("getSnapshot", async () => snapshot({ timeoutMs: CORE_READ_TIMEOUT_MS }));
   handle("getChatGptSession", async () => runJson(["chatgpt-session", "status"]));
   handle("getChatGptAccountPool", async () => projectChatGPTSubscriptionLoginAttempts(
     await runJson(
@@ -1508,6 +1524,11 @@ export function registerIpcHandlers({
     windowFor(event).close();
     return { ok: true };
   });
+  handle("getWindowState", async (_input, event) => {
+    // 渲染层用这个决定右上角要画「最大化」还是「还原」图标。
+    const window = windowFor(event);
+    return { maximized: Boolean(window.isMaximized?.()) };
+  });
   handleAction("openExternal", async ({ url } = {}) => {
     if (!shell?.openExternal) throw new Error("External links are unavailable.");
     let parsed;
@@ -1516,7 +1537,7 @@ export function registerIpcHandlers({
     await shell.openExternal(parsed.href);
     return { opened: true };
   }, { requiresCompatibleRouter: false });
-  handle("getProviders", async () => runJson(["providers"]));
+  handle("getProviders", async () => runJson(["providers"], { timeoutMs: CORE_READ_TIMEOUT_MS }));
   handle("discoverProviderModels", async ({ providerId, refresh = false } = {}) => {
     const { id } = await validateCatalogProvider(providerId);
     if (typeof refresh !== "boolean") throw new Error("refresh must be boolean.");
@@ -1534,6 +1555,37 @@ export function registerIpcHandlers({
       throw new Error("Provider discovery returned invalid JSON.");
     }
   });
+  // The Models page's per-account Test button: one live request pinned to one
+  // route. This is a read -- it changes no router state and republishes
+  // nothing -- so it must not enter the mutation drain, where a slow provider
+  // would hold every later switch and the quit path behind it.
+  //
+  // The renderer only ever supplies a slug it read from the published catalog,
+  // and that catalog is re-checked here before the child is spawned, so this
+  // command takes no free-form argument. The remaining arguments are the
+  // consent flags for a request that bills the account being tested; the
+  // button that reaches this handler names that cost before it is pressed.
+  handle("testRoute", async ({ slug } = {}) => {
+    const model = await validateModel(slug);
+    const result = await runJson(
+      ["test-route", model, "--live", "--yes", "--json"],
+      { timeoutMs: ROUTE_TEST_TIMEOUT_MS },
+    );
+    // A router older than this app answers an unknown control subcommand with
+    // its overview instead of failing, so the payload shape -- not the exit
+    // code -- decides whether a route was really tested. Fail closed.
+    if (typeof result?.ok !== "boolean") {
+      throw new Error(
+        "The installed router cannot run live route tests. Update it and reopen this app.",
+      );
+    }
+    return {
+      model: typeof result.model === "string" && result.model ? result.model : model,
+      ok: result.ok,
+      status: Number.isInteger(result.status) ? result.status : undefined,
+      detail: cleanText(result.detail, result.ok ? "Live response verified." : "No response.", 400),
+    };
+  });
   handle("getAccountUsage", async () => runJson(["account"], { timeoutMs: 20_000 }));
   handle("getProviderUsage", async () => runJson(
     ["provider-usage"],
@@ -1542,7 +1594,7 @@ export function registerIpcHandlers({
   handle("getLocalModels", async () => runJson(["local-models", "list", "--json"], { timeoutMs: 20_000 }));
   handle("getVisionBridge", async () => runJson(["vision-bridge", "status"], { timeoutMs: 20_000 }));
   handle("getToolResultAging", async () => runJson(["tool-result-aging", "status"], { timeoutMs: 20_000 }));
-  handle("getPresence", async () => runJson(["presence", "status"]));
+  handle("getPresence", async () => runJson(["presence", "status"], { timeoutMs: CORE_READ_TIMEOUT_MS }));
   handle("getHarnesses", async () => getHarnessSnapshot());
   handle("getAgentBridges", async () => {
     const module = await installedRouterModule("agent-bridges.mjs");
@@ -1613,8 +1665,8 @@ export function registerIpcHandlers({
   // reader owns the caller capability and preserves the CLI's redacted shape.
   handle("getHealth", async () => healthReader({ fetchImpl }));
   handle("refreshAll", async () => ({
-    snapshot: await snapshot(),
-    providers: await runJson(["providers"]),
+    snapshot: await snapshot({ timeoutMs: CORE_READ_TIMEOUT_MS }),
+    providers: await runJson(["providers"], { timeoutMs: CORE_READ_TIMEOUT_MS }),
     accountUsage: await runJson(["account"], { timeoutMs: 20_000 }),
     providerUsage: await runJson(
       ["provider-usage"],
@@ -1622,7 +1674,7 @@ export function registerIpcHandlers({
     ),
     localModels: await runJson(["local-models", "list", "--json"], { timeoutMs: 20_000 }),
     visionBridge: await runJson(["vision-bridge", "status"]),
-    presence: await runJson(["presence", "status"]),
+    presence: await runJson(["presence", "status"], { timeoutMs: CORE_READ_TIMEOUT_MS }),
   }));
 
   handleAction("setProviderEnabled", async ({ providerId, enabled = true } = {}) => {

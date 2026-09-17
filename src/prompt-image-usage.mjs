@@ -1,19 +1,38 @@
 import { isUtf8 } from "node:buffer";
 
-const DEEPSEEK_FLASH_MODELS = new Set([
-  "deepseek-flash",
-  "deepseek-v4-flash",
-  "deepseek-v4-flash-vision-exp",
-]);
-
 // DeepSeek's hosted Flash API resizes every image to at most 1024 tokens.
 // The older Flash names now alias that model. This bound is not established
-// for resellers, other providers, or other DeepSeek models.
+// for every route that relays the same model, so it is granted per provider and
+// per model family, and only where it was actually measured:
+//
+//   deepseek     -- the vendor's own documentation (below).
+//   opencode-go  -- measured 2026-09-17: a 2,048,877-byte PNG (2.7 MB of
+//                   base64) beside a 36-token prompt answered with
+//                   prompt_tokens=1025, so the image cost 989 tokens rather
+//                   than the ~828,000 the raw byte ratio charges it.
+//
+// Command Code, OpenRouter, Nous Portal and Ollama Cloud relay the same model
+// and very likely the same vision pipeline, but none of them has been measured
+// here, so they keep the conservative whole-byte count. Widening this is a
+// measurement, not an inference from the vendor's documentation.
+//
 // Verified 2026-09-10: https://api-docs.deepseek.com/guides/vision/#token-usage
+const DEEPSEEK_IMAGE_TOKEN_BOUND = 1024;
+const MEASURED_IMAGE_TOKEN_BOUNDS = new Map([
+  [
+    "deepseek",
+    new Set(["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"]),
+  ],
+  ["opencode-go", new Set(["deepseek-v4.1-flash"])],
+]);
+
 export function maxImageTokensForRoute(route) {
-  return route?.provider === "deepseek" && DEEPSEEK_FLASH_MODELS.has(route.upstreamModel)
-    ? 1024
-    : undefined;
+  const families = MEASURED_IMAGE_TOKEN_BOUNDS.get(route?.provider);
+  if (!families) return undefined;
+  // A reseller spells the vendor into the id (`deepseek/deepseek-v4.1-flash`),
+  // so the model a route serves is the last path segment either way.
+  const family = String(route?.upstreamModel || "").split("/").pop();
+  return families.has(family) ? DEEPSEEK_IMAGE_TOKEN_BOUND : undefined;
 }
 
 // Discount only image references in actual Responses content arrays. A pasted

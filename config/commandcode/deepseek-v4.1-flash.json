@@ -8,7 +8,7 @@
       "provider": "commandcode",
       "listed": true,
       "displayName": "DeepSeek V4.1 Flash (Command Code)",
-      "description": "DeepSeek V4.1 Flash through the Command Code Provider API.",
+      "description": "DeepSeek V4.1 Flash through the Command Code Provider API; image understanding, tool calls, and low/high/max reasoning over the Chat Completions route.",
       "priority": 102,
       "defaultEffort": "high",
       "reasoningLevels": [
@@ -28,7 +28,8 @@
       "contextWindow": 1000000,
       "autoCompact": 850000,
       "inputModalities": [
-        "text"
+        "text",
+        "image"
       ],
       "compHash": "commandcode-deepseek-v4-1-flash-v1"
     }

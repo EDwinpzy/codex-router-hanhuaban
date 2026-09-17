@@ -24,6 +24,7 @@ import {
   setLanguage,
   t,
 } from "./i18n.mjs";
+import { installUiZh } from "./ui-zh.mjs";
 
 const invoke = window.__TAURI__?.core?.invoke;
 const view = new URLSearchParams(window.location.search).get("view") || "panel";
@@ -34,6 +35,10 @@ const view = new URLSearchParams(window.location.search).get("view") || "panel";
 let capabilities = null;
 
 applyTranslations(document);
+
+// 补齐面板里未接入 i18n 的硬编码英文（index.html 与本文中的字面量）。
+// 仅在界面语言为中文时生效，切回其他语言会自动还原；详见 ./ui-zh.mjs。
+installUiZh();
 
 if (view === "island") {
   document.getElementById("island").hidden = false;

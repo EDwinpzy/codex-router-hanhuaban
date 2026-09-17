@@ -76,6 +76,15 @@ export interface AgentBridgeDescriptor {
 }
 export interface AgentBridgeSnapshot { version: 1; bridges: AgentBridgeDescriptor[]; }
 
+/** The verdict of one live request pinned to a single route. */
+export interface RouteTestResult {
+  model: string;
+  ok: boolean;
+  status?: number;
+  /** The router's own account of the answer: the marker it verified, or why it did not. */
+  detail: string;
+}
+
 export interface HarnessSession {
   id: string;
   harnessId: HarnessId;
@@ -165,12 +174,16 @@ export interface RouterControl {
   minimizeWindow(): Promise<unknown>;
   toggleMaximizeWindow(): Promise<unknown>;
   closeWindow(): Promise<unknown>;
+  getWindowState(): Promise<{ maximized: boolean }>;
+  onWindowState(listener: (state: { maximized: boolean }) => void): () => void;
   getSnapshot(): Promise<unknown>;
   getChatGptSession(): Promise<ChatGptSessionStatus>;
   getChatGptAccountPool(): Promise<ChatGptAccountPool>;
   getHealth(): Promise<unknown>;
   getProviders(): Promise<unknown>;
   discoverProviderModels(provider: string, options?: { refresh?: boolean }): Promise<unknown>;
+  /** One live request through exactly this route, for the Models page test button. */
+  testRoute(slug: string): Promise<RouteTestResult>;
   getAccountUsage(): Promise<unknown>;
   getProviderUsage(): Promise<unknown>;
   getLocalModels(): Promise<unknown>;

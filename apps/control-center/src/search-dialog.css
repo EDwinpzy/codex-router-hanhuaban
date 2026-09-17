@@ -50,7 +50,7 @@
   border-radius: 0;
   background: transparent;
   color: var(--ink-strong);
-  font-size: 18px;
+  font-size: calc(18px * var(--fs-scale));
   font-weight: 440;
   letter-spacing: -0.015em;
 }
@@ -80,7 +80,7 @@
   background: var(--surface-2);
   color: var(--ink-subtle);
   font-family: inherit;
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   font-weight: 520;
   line-height: 1;
   text-transform: capitalize;
@@ -92,12 +92,12 @@
   justify-content: space-between;
   padding: 4px 20px 7px;
   color: var(--ink-faint);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs-scale));
   font-weight: 560;
 }
 
 .search-dialog-section-label span {
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   font-weight: 450;
 }
 
@@ -158,14 +158,14 @@
 
 .search-dialog-result-copy strong {
   color: inherit;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--fs-scale));
   font-weight: 580;
 }
 
 .search-dialog-result-copy small {
   margin-top: 3px;
   color: var(--ink-faint);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
 }
 
 .search-dialog-current {
@@ -173,7 +173,7 @@
   border-radius: 999px;
   background: var(--surface-3);
   color: var(--ink-subtle);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 560;
 }
 
@@ -191,12 +191,12 @@
 
 .search-dialog-empty strong {
   color: var(--ink);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--fs-scale));
   font-weight: 580;
 }
 
 .search-dialog-empty span {
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs-scale));
 }
 
 .search-dialog-hints {
@@ -209,7 +209,7 @@
   border-top: 1px solid var(--line);
   background: var(--surface-1);
   color: var(--ink-faint);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
 }
 
 .search-dialog-hints span {
@@ -223,7 +223,7 @@
   min-height: 18px;
   padding: 2px 4px;
   border-radius: 5px;
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 @media (max-width: 540px) {

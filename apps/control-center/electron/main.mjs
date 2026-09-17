@@ -113,8 +113,14 @@ function hideDockForHiddenWindow() {
 
 function createWindow() {
   const createdWindow = new BrowserWindow({
-    width: 1280,
-    height: 840,
+    // The Models list spends its widest track on the account name and its
+    // next-widest on the per-route controls; at 1280 the route table had to
+    // ellipsize model ids nobody could then read. 1440 keeps the whole row --
+    // identity, context, input, two switches, effort, and the live test --
+    // legible at the interface's own font scale without going full-screen on a
+    // 1080p display.
+    width: 1440,
+    height: 880,
     minWidth: 960,
     minHeight: 640,
     show: false,
@@ -182,6 +188,16 @@ function createWindow() {
     },
   );
   createdWindow.once("ready-to-show", () => rendererReady.didBecomeReadyToShow());
+  // 右上角的 Windows 风格窗控要跟着窗口最大化状态切换「最大化/还原」图标。
+  const publishWindowState = () => {
+    if (createdWindow.isDestroyed()) return;
+    const state = { maximized: Boolean(createdWindow.isMaximized()) };
+    createdWindow.webContents.send("router-control:window-state", state);
+  };
+  createdWindow.on("maximize", publishWindowState);
+  createdWindow.on("unmaximize", publishWindowState);
+  createdWindow.on("enter-full-screen", publishWindowState);
+  createdWindow.on("leave-full-screen", publishWindowState);
   createdWindow.on("show", () => {
     windowVisible = true;
     publishLifecycleState();
@@ -262,17 +278,33 @@ function completeApplicationReadiness() {
   openRequests.markReady();
 }
 
+// The native tray menu is drawn by the OS, so the renderer's interface-language
+// preference cannot reach it. Follow the operating-system language instead,
+// which is also the renderer's own first guess at the interface language.
+function nativeTrayLabels() {
+  let locale = "";
+  try {
+    locale = String(app.getLocale?.() || app.getSystemLocale?.() || "");
+  } catch {
+    locale = "";
+  }
+  return locale.toLowerCase().startsWith("zh")
+    ? { open: "打开控制中心", quit: "退出 Codex Router" }
+    : { open: "Open Control Center", quit: "Quit Codex Router" };
+}
+
 function createTray() {
   if (tray && !tray.isDestroyed()) return tray;
   const image = nativeImage.createFromPath(appIconPath());
   if (image.isEmpty()) throw new Error(`The tray icon could not be loaded from ${appIconPath()}.`);
   const createdTray = new Tray(image);
   try {
+    const labels = nativeTrayLabels();
     createdTray.setToolTip("Codex Router");
     createdTray.setContextMenu(Menu.buildFromTemplate([
-      { label: "Open Control Center", click: showWindow },
+      { label: labels.open, click: showWindow },
       { type: "separator" },
-      { label: "Quit Codex Router", click: () => app.quit() },
+      { label: labels.quit, click: () => app.quit() },
     ]));
     createdTray.on("click", showWindow);
   } catch (error) {

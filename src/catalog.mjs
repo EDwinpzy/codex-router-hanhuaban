@@ -1071,6 +1071,33 @@ export function effectivePickerHiddenModels(hiddenModels, nativeBaseSlugs, { log
   return new Set([...hidden].filter((slug) => !native.has(slug)));
 }
 
+// LOCAL PATCH (not upstream). A native model's `visibility` is copied verbatim
+// from the captured native table, and that table comes either from Codex's own
+// models_cache.json or from a catalog baked into the Codex binary -- neither is
+// editable, and the picker overlay deliberately refuses to hide native slugs.
+// So there is no supported way to hide a native model on purpose. This map is
+// the escape hatch: slugs listed here are forced to the given visibility every
+// time the catalog is rebuilt, so the choice survives republishes, account
+// switches and updates to models_cache.json. Set a value to null to drop the
+// override. Keep this in sync with the codex-router-install skill doc.
+const LOCAL_NATIVE_VISIBILITY_OVERRIDES = new Map([
+  ["gpt-5.2", "hide"],
+  ["gpt-5.5", "hide"],
+]);
+
+function applyLocalNativeVisibilityOverrides(catalog) {
+  if (!catalog || !Array.isArray(catalog.models)) return catalog;
+  for (const model of catalog.models) {
+    const slug = String(model?.slug ?? "");
+    if (LOCAL_NATIVE_VISIBILITY_OVERRIDES.has(slug)) {
+      const wanted = LOCAL_NATIVE_VISIBILITY_OVERRIDES.get(slug);
+      if (wanted === null) continue;
+      if (model.visibility !== wanted) model.visibility = wanted;
+    }
+  }
+  return catalog;
+}
+
 export function publishCatalog({ refreshNative = refresh, output = true } = {}) {
   // The catalog is what Codex offers in its picker. Writing it from a checkout
   // that does not own this state directory is how the picker ends up
@@ -1125,7 +1152,7 @@ export function publishCatalog({ refreshNative = refresh, output = true } = {}) 
     userSlugs,
     Date.now(),
   );
-  const captured = nativeCatalog({ refreshNative });
+  const captured = applyLocalNativeVisibilityOverrides(nativeCatalog({ refreshNative }));
   // The router picker overlay is for routed models.  In a normal signed-in
   // Codex install the account's native entries remain Codex-owned; applying a
   // stale router `hidden` decision to them can erase the original Codex picker

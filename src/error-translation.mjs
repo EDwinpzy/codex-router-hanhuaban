@@ -120,6 +120,25 @@ function isOutOfUsage(detail, errorType) {
   return QUOTA_PATTERNS.some((pattern) => pattern.test(detail));
 }
 
+// The provider's own filter refused the content, so nothing about the request
+// shape, the credential, or a retry changes the answer -- the provider says as
+// much itself (`isRetryable: false`). DeepSeek answers `Content Exists Risk`;
+// the rest are how the same refusal travels elsewhere. This is deliberately not
+// a failure kind: a refusal is not evidence about provider health, so it must
+// never cool the provider down or move a turn to another model behind the
+// operator's back.
+const CONTENT_POLICY_PATTERNS = [
+  /content exists risk/i,
+  /content[_ -]?filter/i,
+  /content[_ -]?policy/i,
+  /flagged as potentially violating/i,
+  /\bmoderation\b/i,
+];
+
+function isContentPolicyRefusal(detail) {
+  return CONTENT_POLICY_PATTERNS.some((pattern) => pattern.test(detail));
+}
+
 // Ollama's MLX runner returns this deterministic request-size failure as an
 // HTTP 500, and LiteLLM currently wraps it as APIConnectionError. Left as a
 // server error, Codex retries for minutes and eventually replaces the useful
@@ -211,6 +230,17 @@ function describeFailure({
     return {
       type: "billing_error",
       message: `You have run out of usage at ${providerName} for ${modelName}. Top up or check the plan on your ${providerName} account.`,
+    };
+  }
+  // Ahead of the credential branches: a filter refusal is not an authentication
+  // problem, and "re-run setup" would send the operator in circles.
+  if (status < 500 && isContentPolicyRefusal(detail)) {
+    return {
+      type: "invalid_request_error",
+      message:
+        `${providerName} refused this turn on content grounds. It is not retryable: the ` +
+        "same content comes back refused. Send it with a different model, or leave out " +
+        "the image or text that was flagged.",
     };
   }
   if (status === 401 || status === 403) {

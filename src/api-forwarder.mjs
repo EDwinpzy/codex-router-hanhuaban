@@ -507,13 +507,16 @@ function ensureGeminiThoughtSignatures(messages) {
   });
 }
 
-// Google's OpenAI-compatible endpoint accepts image parts only on user turns;
-// an image_url/input_image part on an assistant or tool turn is rejected with
-// "Invalid content part type: image_url", 400ing the whole turn. That shape is
-// normal after a vision-capable tool returns a screenshot, so downgrade those
-// non-user image parts to a text placeholder rather than lose the turn. User
-// turns are left untouched so Gemini still sees the images it can read.
-function sanitizeGeminiImageContent(messages) {
+// Some OpenAI-compatible endpoints accept image parts only on user turns. Google
+// rejects one on an assistant or tool turn with "Invalid content part type:
+// image_url", and Command Code answers 400 Invalid input naming that message's
+// content -- both 400ing the whole turn. That shape is normal after a
+// screenshot-returning tool, so downgrade those non-user image parts to a text
+// placeholder rather than lose the turn. User turns are left untouched, so a
+// model that reads images itself still sees them. Never silent: the placeholder
+// names the URL when it is not inline, and the caller can tell content it sent
+// was replaced.
+function sanitizeNonUserImageContent(messages) {
   return messages.map((message) => {
     if (!message || message.role === "user" || !Array.isArray(message.content)) return message;
     let changed = false;
@@ -536,6 +539,50 @@ function sanitizeGeminiImageContent(messages) {
   });
 }
 
+// Command Code's Provider API takes an OpenAI image part but not the `detail`
+// hint when it reads `original` -- the value Codex attaches to a pasted
+// screenshot. The same image with `detail: "auto"`, or with no hint at all,
+// answers 200; `original` comes back as `400 Invalid input` naming the whole
+// message content, which costs the turn rather than the image. Probed against
+// the live Provider API on 2026-09-15 and reproduced through the router with
+// that one field as the only difference. OpenCode rejects the identical hint --
+// that is what `downgradeOriginalImageDetail` exists for on the client path --
+// so this is the same downgrade at the provider boundary, where the body about
+// to leave the machine is what gets rewritten. The image bytes, the part type,
+// and the surrounding transcript are untouched.
+function sanitizeOriginalImageDetail(payload) {
+  let changed = 0;
+  for (const field of ["messages", "input"]) {
+    if (!Array.isArray(payload[field])) continue;
+    payload[field] = payload[field].map((item) => {
+      if (!item || typeof item !== "object") return item;
+      let itemChanged = false;
+      const cleaned = { ...item };
+      for (const parts of ["content", "output"]) {
+        if (!Array.isArray(item[parts])) continue;
+        const next = item[parts].map((part) => {
+          if (!part || typeof part !== "object") return part;
+          if (part.type !== "image_url" && part.type !== "input_image") return part;
+          const url = part.image_url;
+          if (url && typeof url === "object" && !Array.isArray(url)) {
+            if (url.detail === undefined || url.detail === "auto") return part;
+            itemChanged = true;
+            return { ...part, image_url: { ...url, detail: "auto" } };
+          }
+          if (part.detail === undefined || part.detail === "auto") return part;
+          itemChanged = true;
+          return { ...part, detail: "auto" };
+        });
+        if (itemChanged) cleaned[parts] = next;
+      }
+      if (!itemChanged) return item;
+      changed += 1;
+      return cleaned;
+    });
+  }
+  return changed;
+}
+
 function trimTrailingModelTurns(messages) {
   const trimmed = [...messages];
   while (trimmed.length > 0 && trimmed[trimmed.length - 1]?.role === "assistant") {
@@ -549,7 +596,12 @@ function sanitizeChatToolHistory(messages, provider, model) {
   const repaired = ensureToolResultsForCalls(coalesceAssistantMessages(messages));
   let cleaned = repaired;
   if (isGeminiProvider(provider, model)) {
-    cleaned = ensureGeminiThoughtSignatures(sanitizeGeminiImageContent(repaired));
+    cleaned = ensureGeminiThoughtSignatures(sanitizeNonUserImageContent(repaired));
+  }
+  // The Command Code Provider API takes an image only on a user turn; a
+  // screenshot a tool returned is otherwise a 400 for the whole turn.
+  if (isCommandCodeProvider(provider)) {
+    cleaned = sanitizeNonUserImageContent(cleaned);
   }
   return requiresTrailingUserTurn(provider, model) ? trimTrailingModelTurns(cleaned) : cleaned;
 }
@@ -686,6 +738,53 @@ function stripEmptyTools(payload) {
     }
   }
   return changed;
+}
+
+function isPlainToolObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// LiteLLM builds the Anthropic tool objects this forwarder relays, and its
+// mapper stamps `input_schema` only on the entries it recognized as an OpenAI
+// function or freeform tool. Every other shape it can emit -- a hosted
+// search/editor/execution tool, a tool-search control, the advisor control, or
+// the code-execution tool it appends when the turn carries a container upload
+// -- arrives as a `{type, name}` entry with no schema at all. opencode's
+// Messages edge validates the whole array and refuses the request with
+// "tools[N] must have a string name and an object input_schema", which costs
+// the caller the entire turn rather than the one tool (#753). Repair it here,
+// on the one wire that is Anthropic-shaped: an entry with no usable name can
+// never be dispatched and is dropped, and an entry that merely lost its schema
+// keeps its name with an empty object root.
+function normalizeAnthropicToolEntries(payload) {
+  if (!Array.isArray(payload.tools)) return;
+  const tools = [];
+  let repaired = 0;
+  let dropped = 0;
+  for (const tool of payload.tools) {
+    if (!isPlainToolObject(tool)) {
+      dropped += 1;
+      continue;
+    }
+    const name = typeof tool.name === "string" ? tool.name.trim() : "";
+    if (!name) {
+      dropped += 1;
+      continue;
+    }
+    if (isPlainToolObject(tool.input_schema)) {
+      tools.push(tool);
+      continue;
+    }
+    repaired += 1;
+    tools.push({ ...tool, input_schema: { type: "object", properties: {} } });
+  }
+  if (repaired === 0 && dropped === 0) return;
+  payload.tools = tools;
+  // Never quieted: the model's tool surface changed, and an unattended service
+  // is exactly where that must not be silent.
+  console.error(
+    `[api-forwarder] anthropic tool entries repaired=${repaired} dropped=${dropped}`,
+  );
 }
 
 function normalizeBody(buffer, contentType, route) {
@@ -838,6 +937,14 @@ function normalizeBody(buffer, contentType, route) {
   if (provider.id === "meta" && Array.isArray(payload.tools)) {
     payload.tools = stripSearchContentTypes(payload.tools);
   }
+  // Anthropic Messages is the one wire here that validates a tool array as a
+  // whole, so a single entry LiteLLM could not give a schema to costs the
+  // caller the turn. Repair it before the array is handed upstream, and before
+  // the empty-tools strip below so an array this repair empties is still
+  // removed rather than sent as `tools: []`.
+  if (provider.protocol === "anthropic") {
+    normalizeAnthropicToolEntries(payload);
+  }
   // Strip empty tools array and dangling tool_choice for all routes.
   // Strict upstreams (vLLM >=0.20 Pydantic) refuse both, and Codex sends
   // tools: [] on compaction and plain chat. Log when a request is changed.
@@ -858,6 +965,16 @@ function normalizeBody(buffer, contentType, route) {
     // This is native ChatGPT account metadata, not an upstream scheduling
     // request Copilot accepts.
     delete payload.service_tier;
+  }
+  // Provider quirks that only affect the hint, not the image: Command Code
+  // refuses `detail: "original"` outright, so the hint is downgraded before the
+  // body leaves. A model that cannot read images at all is handled by the strip
+  // below instead, which is why this runs first.
+  if (isCommandCodeProvider(provider) && sanitizeOriginalImageDetail(payload) && !QUIET) {
+    console.error(
+      `[api-forwarder] model=${model.gatewayModel} downgraded an image detail hint ` +
+        "the Command Code Provider API refuses",
+    );
   }
   // An image here has bypassed the router's vision bridge. This forwarder sits
   // *downstream* of the gateway -- every routed model's `api_base` points at it

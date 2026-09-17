@@ -655,3 +655,152 @@ test("pooled Command Code recheck success is cached against the exact winning ke
     rmSync(cliHome, { recursive: true, force: true });
   }
 });
+
+// The Provider API takes the image part this route sends but refuses the
+// `detail: "original"` hint Codex attaches to a pasted screenshot: the whole
+// turn comes back 400 Invalid input, which is why the hint is downgraded on the
+// way out. Assert what actually left the machine rather than that a helper ran.
+test("a pasted screenshot's detail hint never reaches the Command Code Provider API", async () => {
+  const stateDir = mkdtempSync(path.join(os.tmpdir(), "commandcode-forwarder-state-"));
+  const cliHome = mkdtempSync(path.join(os.tmpdir(), "commandcode-forwarder-home-"));
+  const upstreamPort = await openPort();
+  const forwarderPort = await openPort();
+  const bodies = [];
+  const server = http.createServer((request, response) => {
+    let raw = "";
+    request.on("data", (chunk) => {
+      raw += chunk;
+    });
+    request.on("end", () => {
+      bodies.push(JSON.parse(raw));
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      for (const chunk of [
+        { delta: { content: "OK" }, finish_reason: null },
+        { delta: {}, finish_reason: "stop" },
+      ]) {
+        response.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-probe",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "deepseek/deepseek-v4.1-flash",
+            choices: [{ index: 0, ...chunk }],
+          })}\n\n`,
+        );
+      }
+      response.end("data: [DONE]\n\n");
+    });
+  });
+  await listen(server, upstreamPort);
+
+  const child = spawn(process.execPath, [path.join(root, "src", "api-forwarder.mjs")], {
+    cwd: root,
+    env: {
+      ...process.env,
+      MODEL_ROUTER_TARGET: "codex",
+      MODEL_ROUTER_INTERNAL_KEY: internalKey,
+      MODEL_ROUTER_API_PORT: String(forwarderPort),
+      MODEL_ROUTER_STATE_DIR: stateDir,
+      MODEL_ROUTER_QUIET: "1",
+      COMMANDCODE_BASE_URL: `http://127.0.0.1:${upstreamPort}/provider/v1`,
+      COMMAND_CODE_API_KEY: "user_test_key",
+      COMMANDCODE_CLI_HOME: cliHome,
+    },
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  child.stderr.setEncoding("utf8");
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+
+  const base = `http://127.0.0.1:${forwarderPort}`;
+  const headers = { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" };
+  const imageUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const turn = (detail) =>
+    fetch(`${base}/v1/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: "commandcode-deepseek-v4-1-flash",
+        stream: true,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "what is this" },
+              { type: "image_url", image_url: { url: imageUrl, detail } },
+            ],
+          },
+        ],
+      }),
+    });
+
+  try {
+    await waitForHealth(base, headers, child, () => stderr);
+
+    const first = await turn("original");
+    assert.equal(first.status, 200);
+    await first.text();
+    assert.equal(bodies.length, 1);
+    const sent = bodies[0].messages[0].content[1];
+    assert.equal(sent.type, "image_url");
+    assert.equal(
+      sent.image_url.detail,
+      "auto",
+      "the hint the Provider API refuses must not leave the machine",
+    );
+    assert.equal(sent.image_url.url, imageUrl, "the image bytes stay byte-identical");
+    assert.equal(bodies[0].messages[0].content[0].text, "what is this");
+
+    // A hint that already reads `auto` is left alone rather than rewritten.
+    const second = await turn("auto");
+    assert.equal(second.status, 200);
+    await second.text();
+    assert.equal(bodies[1].messages[0].content[1].image_url.detail, "auto");
+
+    // An image a tool returned is the other shape this endpoint refuses: it
+    // takes images on user turns only, so the part becomes a placeholder
+    // instead of a 400 for the whole turn.
+    const third = await fetch(`${base}/v1/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: "commandcode-deepseek-v4-1-flash",
+        stream: true,
+        messages: [
+          { role: "user", content: "screenshot please" },
+          {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              { id: "call_1", type: "function", function: { name: "screenshot", arguments: "{}" } },
+            ],
+          },
+          {
+            role: "tool",
+            tool_call_id: "call_1",
+            content: [{ type: "image_url", image_url: { url: imageUrl } }],
+          },
+        ],
+      }),
+    });
+    assert.equal(third.status, 200);
+    await third.text();
+    const toolMessage = bodies[2].messages.find((message) => message.role === "tool");
+    assert.ok(Array.isArray(toolMessage.content));
+    assert.ok(
+      toolMessage.content.every((part) => part.type === "text"),
+      "a non-user image part must not leave the machine",
+    );
+    assert.match(JSON.stringify(toolMessage.content), /\[Image\]/);
+  } finally {
+    if (child.exitCode === null) {
+      child.kill("SIGTERM");
+      await new Promise((resolve) => child.once("exit", resolve));
+    }
+    await new Promise((resolve) => server.close(resolve));
+    rmSync(stateDir, { recursive: true, force: true });
+    rmSync(cliHome, { recursive: true, force: true });
+  }
+});

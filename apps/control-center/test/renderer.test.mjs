@@ -35,6 +35,7 @@ const bridgeSource = String.raw`
   const loginStaysPending = searchParams.get("loginStaysPending") === "1";
   const staleAccountFailure = searchParams.get("staleAccountFailure") === "1";
   const staleProviderUsage = searchParams.get("staleProviderUsage") === "1";
+  const routeTestFails = searchParams.get("routeTestFails") === "1";
   const fallbackUsage = searchParams.get("fallbackUsage") === "1";
   const pollOnceMs = Number(searchParams.get("pollOnceMs")) || 0;
   const healthPollOnceMs = Number(searchParams.get("healthPollOnceMs")) || 0;
@@ -225,6 +226,9 @@ const bridgeSource = String.raw`
 
   window.routerControl = Object.freeze({
     platform: navigator.platform.toLowerCase().includes("mac") ? "darwin" : "linux",
+    // 右上角窗控用它决定画「最大化」还是「还原」图标。
+    getWindowState: async () => ({ maximized: false }),
+    onWindowState: () => () => {},
     getSnapshot: async () => {
       await new Promise((resolve) => setTimeout(resolve, snapshotDelayMs));
       return snapshot;
@@ -439,6 +443,12 @@ const bridgeSource = String.raw`
       return { ok: true };
     },
     setPickerModel: async () => ({ ok: true }),
+    testRoute: async (slug) => {
+      record("testRoute", slug);
+      return routeTestFails
+        ? { model: slug, ok: false, status: 401, detail: "Invalid API key" }
+        : { model: slug, ok: true, status: 200, detail: "live response marker verified" };
+    },
     setProviderEnabled: async () => ({ ok: true }),
     setChatGptAccountSelection: async (selection) => {
       record("setChatGptAccountSelection", selection);
@@ -721,7 +731,21 @@ test("the production renderer exposes model discovery and picker actions", { tim
       assert.equal(harnessColumns.every((row) => Math.abs(row[column].x - harnessColumns[0][column].x) < 1), true);
       assert.equal(harnessColumns.every((row) => Math.abs(row[column].width - harnessColumns[0][column].width) < 1), true);
     }
-    assert.equal(harnessColumns.every((row) => Math.abs(row.actions.y - harnessColumns[0].actions.y - (rowBoxes[harnessColumns.indexOf(row)].y - rowBoxes[0].y)) < 1), true);
+    // Rows wrap to two lines when a long origin or setup note needs it, so a
+    // shorter row's footer sits higher. What must hold is the *offset* from the
+    // row's own top: the footer keeps its place in the row's internal flow.
+    // Two offsets exist because the runtime column is its own grid row in the
+    // taller layout: a one-line row's footer follows the facts directly.
+    const footerOffsets = harnessColumns.map((row, index) => row.actions.y - rowBoxes[index].y);
+    const distinctOffsets = [];
+    for (const offset of footerOffsets) {
+      if (!distinctOffsets.some((known) => Math.abs(known - offset) < 1)) distinctOffsets.push(offset);
+    }
+    assert.equal(
+      distinctOffsets.length <= 2,
+      true,
+      `harness footers must settle on one layout, not per-row drift: ${footerOffsets.join(", ")}`,
+    );
     await page.setViewportSize({ width: 880, height: 840 });
     assert.equal(
       await harnessRows.first().evaluate((row) => getComputedStyle(row).gridTemplateColumns.split(" ").length),
@@ -768,18 +792,30 @@ test("the production renderer exposes model discovery and picker actions", { tim
     assert.equal(await connectMenu.getByRole("menuitem").count(), 5);
     await page.keyboard.press("Escape");
 
-    // A single-route model's thinking menu opens below its definition-list
-    // cell. The menu used to be clipped by that cell's generic text-overflow
-    // rule, leaving only its top edge visible.
+    // A single-route model opens the same route table as one reached through
+    // six accounts: same columns, same controls, and the live test the
+    // definition list it used to open never had.
     const selectedFamily = page.locator(".pm-family-row").filter({ hasText: "DeepSeek Chat" });
     await selectedFamily.locator(".pm-family-open").click();
+    assert.deepEqual(
+      await selectedFamily.locator(".pm-route-head > span").allTextContents(),
+      ["Account", "Context", "Input", "In picker", "Subagents", "Thinking", "Test"],
+    );
+    assert.equal(await selectedFamily.locator(".pm-route-row").count(), 1);
+    assert.equal(await selectedFamily.getByRole("button", { name: /^Test / }).count(), 1);
+    // Its thinking menu opens below the cell rather than being clipped by it.
+    // The control used to live in a definition-list cell whose generic
+    // text-overflow rule left only the menu's top edge visible.
     const thinkingTrigger = selectedFamily.getByRole("button", {
       name: "DeepSeek Chat DeepSeek subagent thinking effort",
     });
     await thinkingTrigger.click();
     const thinkingMenu = selectedFamily.locator(".pm-effort-menu");
     await thinkingMenu.waitFor();
-    const detailsCell = selectedFamily.locator(".pm-model-details-controls");
+    // The control sits in the row's Thinking cell, and its menu has to escape
+    // that cell instead of being clipped by it.
+    const detailsCell = selectedFamily.locator(".pm-route-cell").filter({ has: page.locator(".pm-effort-trigger") });
+    assert.equal(await detailsCell.count(), 1);
     assert.equal(await detailsCell.evaluate((element) => getComputedStyle(element).overflow), "visible");
     const [cellBox, menuBox] = await Promise.all([detailsCell.boundingBox(), thinkingMenu.boundingBox()]);
     assert.ok(cellBox && menuBox);
@@ -808,7 +844,29 @@ test("the production renderer exposes model discovery and picker actions", { tim
     // that would make it usable.
     assert.equal(await oxFamily.getByRole("button", { name: /^Connect / }).count(), 4);
     const columns = await oxFamily.locator(".pm-route-head > span").allTextContents();
-    assert.deepEqual(columns, ["Account", "Context", "Input", "In picker", "Subagents", "Thinking"]);
+    assert.deepEqual(columns, ["Account", "Context", "Input", "In picker", "Subagents", "Thinking", "Test"]);
+    // Every row ends in the live test as well, so the same model can be
+    // verified account by account. A row with no account yet keeps the control
+    // and says why it cannot run rather than leaving the column blank.
+    assert.equal(await oxFamily.getByRole("button", { name: /^Test / }).count(), 6);
+    const connectedTests = oxFamily
+      .locator('.pm-route-row:not([data-availability="known"])')
+      .getByRole("button", { name: /^Test / });
+    assert.equal(await connectedTests.count(), 2);
+    assert.equal(await connectedTests.first().isDisabled(), false);
+    assert.equal(
+      await oxFamily.locator('[data-availability="known"]').getByRole("button", { name: /^Test / }).first().isDisabled(),
+      true,
+    );
+    await connectedTests.first().click();
+    await page.waitForFunction(() => window.routerControlTest.calls()
+      .some((call) => call.name === "testRoute"));
+    const testedCall = await page.evaluate(() => window.routerControlTest.calls()
+      .find((call) => call.name === "testRoute"));
+    assert.deepEqual(testedCall.args, ["opencode-free/ox-alpha"]);
+    await connectedTests.filter({ hasText: "Works" }).waitFor();
+    await page.waitForFunction(() => window.routerControlTest.calls()
+      .filter((call) => call.name === "testRoute").length === 1);
     await modelSearch.fill("");
 
     // Adding reads every connected provider's catalog at once. Only a provider
@@ -1022,6 +1080,66 @@ test("the production renderer exposes model discovery and picker actions", { tim
     );
     assert.deepEqual(corruptPoolErrors, []);
     await corruptPoolPage.close();
+    assert.deepEqual(pageErrors, [], `renderer errors: ${pageErrors.join("; ")}`);
+  } finally {
+    await browser.close();
+    await close();
+  }
+});
+
+test("the Chinese interface carries the route test and a failure survives as text", { timeout: 120_000 }, async () => {
+  assert.equal(existsSync(path.join(dist, "index.html")), true, "npm test must build the renderer first");
+  assert.ok(chromiumPath, "No Chromium executable is available for the Control Center renderer test.");
+
+  const { url, close } = await serveRenderer();
+  const browser = await chromium.launch({
+    executablePath: chromiumPath,
+    headless: true,
+    args: process.platform === "linux" ? ["--no-sandbox"] : [],
+  });
+  const pageErrors = [];
+  try {
+    // Chinese is the widest spelling of the verdict, so this is also the
+    // measurement that decides whether the column can hold its own label.
+    const page = await browser.newPage({ viewport: { width: 1280, height: 840 } });
+    await page.addInitScript(() => {
+      localStorage.setItem("codex-router-language", "zh-CN");
+    });
+    page.setDefaultTimeout(10_000);
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") pageErrors.push(message.text());
+    });
+
+    await page.goto(`${url}?routeTestFails=1`, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.getByRole("button", { name: "模型", exact: true }).click();
+    await page.locator(".pm-model-toolbar input").fill("Ox Alpha");
+    const family = page.locator(".pm-family-row").filter({ hasText: "Ox Alpha" });
+    await family.locator(".pm-family-open").click();
+    // The verdict replaces the label in place. A failed test is an answer the
+    // operator asked for, so the row must keep it -- and the reason -- rather
+    // than leaving a toast that disappears before it can be read.
+    const testButton = family
+      .locator('.pm-route-row:not([data-availability="known"])')
+      .getByRole("button", { name: /^测试 / })
+      .first();
+    await testButton.filter({ hasText: "测试" }).waitFor();
+    assert.equal(await testButton.innerText(), "测试");
+    await testButton.click();
+    await testButton.filter({ hasText: "连接失败" }).waitFor();
+    assert.equal(await testButton.getAttribute("title"), "Invalid API key");
+    assert.equal(await testButton.isEnabled(), true, "a finished test must be re-runnable");
+    assert.equal(
+      await family.locator(".pm-route-row").evaluateAll((rows) => rows.filter((row) => {
+        const button = row.querySelector(".pm-route-test-button");
+        if (!button) return true;
+        const rowBox = row.getBoundingClientRect();
+        const buttonBox = button.getBoundingClientRect();
+        return buttonBox.right > rowBox.right + 0.5;
+      }).length),
+      0,
+      "a route-test label must stay inside its own row",
+    );
     assert.deepEqual(pageErrors, [], `renderer errors: ${pageErrors.join("; ")}`);
   } finally {
     await browser.close();

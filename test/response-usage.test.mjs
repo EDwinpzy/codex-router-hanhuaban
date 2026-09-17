@@ -37,14 +37,76 @@ test("DeepSeek file references still contribute image tokens", () => {
   assert.ok(estimate >= 2048 && estimate < 2200, `image reference estimate was ${estimate}`);
 });
 
-test("image token bounds apply only to the documented direct DeepSeek models", () => {
+test("image token bounds are granted per provider and model family, only where measured", () => {
   for (const upstreamModel of ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"]) {
     assert.equal(maxImageTokensForRoute({ provider: "deepseek", upstreamModel }), 1024);
-    assert.equal(maxImageTokensForRoute({ provider: "opencode-go", upstreamModel }), undefined);
-    assert.equal(maxImageTokensForRoute({ provider: "custom", upstreamModel }), undefined);
   }
+  // Measured on opencode Go 2026-09-17: a 2,048,877-byte PNG beside a
+  // 36-token prompt answered with prompt_tokens=1025.
+  assert.equal(
+    maxImageTokensForRoute({ provider: "opencode-go", upstreamModel: "deepseek-v4.1-flash" }),
+    1024,
+  );
+  // A reseller spells the vendor into the id; the family is the last segment.
+  assert.equal(
+    maxImageTokensForRoute({
+      provider: "opencode-go",
+      upstreamModel: "deepseek/deepseek-v4.1-flash",
+    }),
+    1024,
+  );
+  // Relay routes nobody measured keep the conservative whole-byte count rather
+  // than borrowing the vendor's bound, and so do other model families.
+  assert.equal(
+    maxImageTokensForRoute({
+      provider: "commandcode",
+      upstreamModel: "deepseek/deepseek-v4.1-flash",
+    }),
+    undefined,
+  );
+  assert.equal(
+    maxImageTokensForRoute({ provider: "openrouter", upstreamModel: "deepseek/deepseek-v4.1-flash" }),
+    undefined,
+  );
+  assert.equal(
+    maxImageTokensForRoute({ provider: "opencode-go", upstreamModel: "deepseek-v4-flash" }),
+    undefined,
+  );
+  assert.equal(maxImageTokensForRoute({ provider: "opencode-go", upstreamModel: "glm-5.3" }), undefined);
+  assert.equal(maxImageTokensForRoute({ provider: "custom", upstreamModel: "deepseek-flash" }), undefined);
   assert.equal(maxImageTokensForRoute({ provider: "deepseek", upstreamModel: "deepseek-v4-pro" }), undefined);
   assert.equal(maxImageTokensForRoute(), undefined);
+});
+
+// The regression this bound exists for: a transcript holding one full-screen
+// screenshot charged the data URL as visible text, and a failover hop to a
+// route that would have served the turn was refused as `context-too-small`.
+test("a screenshot-sized image does not push a measured reseller route past its window", () => {
+  const body = JSON.stringify({
+    input: [
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "还有很多地方没翻译" },
+          { type: "input_image", image_url: `data:image/png;base64,${"A".repeat(3_600_000)}` },
+        ],
+      },
+    ],
+  });
+  const route = {
+    provider: "opencode-go",
+    upstreamModel: "deepseek-v4.1-flash",
+    contextWindow: 1_000_000,
+  };
+  assert.ok(
+    estimateInputTokens(body) > route.contextWindow,
+    "the raw byte count is what refused the hop",
+  );
+  const estimate = estimateInputTokens(body, {
+    maxTokensPerImage: maxImageTokensForRoute(route),
+  });
+  assert.ok(estimate < 2_000, `image estimate was ${estimate}`);
 });
 
 test("image estimates retain visible text, unknown fields and ciphertext handling", () => {

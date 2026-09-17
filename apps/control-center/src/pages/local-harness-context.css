@@ -43,7 +43,7 @@
 
 .lhc-runtime-facts dt {
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
 }
 
 .lhc-runtime-facts dd {
@@ -51,8 +51,8 @@
   margin: 0;
   overflow: hidden;
   color: var(--ink-strong);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(9px * var(--fs-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -74,13 +74,13 @@
 
 .lhc-local-subheading strong {
   color: var(--ink-strong);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   font-weight: 620;
 }
 
 .lhc-local-subheading span {
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .lhc-recommendations > button {
@@ -134,14 +134,14 @@
 
 .lhc-recommendations strong {
   color: var(--ink-strong);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   font-weight: 560;
 }
 
 .lhc-recommendations small {
   margin-top: 3px;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .lhc-catalog-browser {
@@ -165,7 +165,7 @@
 .lhc-catalog-toolbar > span {
   flex: 0 0 auto;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   white-space: nowrap;
 }
 
@@ -213,14 +213,14 @@
 
 .lhc-catalog-family-trigger strong {
   color: var(--ink-strong);
-  font-size: 11px;
+  font-size: calc(11px * var(--fs-scale));
   font-weight: 620;
 }
 
 .lhc-catalog-family-trigger small {
   margin-top: 3px;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .lhc-catalog-family-trigger > svg {
@@ -242,7 +242,7 @@
   display: block;
   margin-top: 10px;
   color: var(--ink-subtle);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   font-weight: 600;
   line-height: 1.35;
 }
@@ -250,7 +250,7 @@
 .lhc-catalog-note {
   margin: 4px 0 8px;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   line-height: 1.4;
 }
 
@@ -289,21 +289,21 @@
 
 .lhc-catalog-model-identity strong {
   color: var(--ink-strong);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   font-weight: 580;
 }
 
 .lhc-catalog-model-identity small {
   margin-top: 3px;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(8px * var(--fs-scale));
 }
 
 .lhc-catalog-model .button {
   min-height: 25px;
   padding: 4px 7px;
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   white-space: nowrap;
 }
 
@@ -360,16 +360,16 @@
 
 .lhc-harness-summary .stat-strip dt {
   margin-bottom: 4px;
-  font-size: 8px;
+  font-size: calc(8px * var(--fs-scale));
 }
 
 .lhc-harness-summary .stat-strip dd {
-  font-size: 19px;
+  font-size: calc(19px * var(--fs-scale));
 }
 
 .lhc-harness-summary .stat-strip small {
   margin-top: 3px;
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .lhc-harness-list {
@@ -392,7 +392,7 @@
   border-bottom: 1px solid var(--line);
   background: var(--surface-1);
   color: var(--ink-faint);
-  font-size: 8px;
+  font-size: calc(8px * var(--fs-scale));
   font-weight: 620;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -474,7 +474,7 @@
 
 .lhc-harness-row h2 {
   color: var(--ink-strong);
-  font-size: 14px;
+  font-size: calc(14px * var(--fs-scale));
   font-weight: 620;
   letter-spacing: -0.015em;
 }
@@ -484,7 +484,7 @@
   max-width: 100%;
   overflow: hidden;
   color: var(--ink-subtle);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -498,7 +498,7 @@
   margin-top: 5px;
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 8px;
+  font-size: calc(8px * var(--fs-scale));
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -524,13 +524,13 @@
 .lhc-harness-facts > div {
   min-width: 0;
   color: var(--ink);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   line-height: 1.35;
 }
 
 .lhc-harness-runtime {
   grid-area: runtime;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .lhc-harness-catalog {
@@ -556,7 +556,7 @@
   color: var(--ink);
   cursor: pointer;
   font: inherit;
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   text-align: left;
 }
 
@@ -577,7 +577,7 @@
   border-top: 1px solid var(--line);
   background: var(--surface-1);
   color: var(--ink-subtle);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   line-height: 1.45;
 }
 
@@ -601,7 +601,7 @@
   width: fit-content;
   cursor: pointer;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   user-select: none;
 }
 
@@ -625,7 +625,7 @@
 .lhc-harness-origin > span {
   grid-column: 1;
   color: var(--ink);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 600;
 }
 
@@ -639,7 +639,7 @@
 .lhc-harness-origin small,
 .lhc-harness-setup > small {
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .lhc-harness-origin small {
@@ -742,14 +742,14 @@
 
 .lhc-continuity-map strong {
   color: var(--ink-strong);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs-scale));
   font-weight: 560;
 }
 
 .lhc-continuity-map small {
   margin-top: 3px;
   color: var(--ink-subtle);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   line-height: 1.4;
 }
 
@@ -772,13 +772,13 @@
 
 .lhc-context-options > label > span {
   color: var(--ink-subtle);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   font-weight: 560;
 }
 
 .lhc-context-options > label > small {
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   line-height: 1.45;
 }
 
@@ -803,14 +803,14 @@
 }
 
 .lhc-context-boundary strong {
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   font-weight: 600;
 }
 
 .lhc-context-boundary small {
   margin-top: 3px;
   color: var(--ink-subtle);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   line-height: 1.4;
 }
 
@@ -830,7 +830,7 @@
 .lhc-session-count {
   margin-left: auto;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   white-space: nowrap;
 }
 
@@ -866,7 +866,7 @@
   gap: 10px;
   padding: 12px 14px;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
 }
 
 .lhc-session-icon {
@@ -907,7 +907,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 11px;
+  font-size: calc(11px * var(--fs-scale));
   font-weight: 570;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -919,7 +919,7 @@
   gap: 10px;
   margin-top: 6px;
   color: var(--ink-subtle);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .lhc-session-meta span {
@@ -935,7 +935,7 @@
 
 .lhc-session-usage {
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .lhc-session-actions {
@@ -949,7 +949,7 @@
   align-items: center;
   gap: 6px;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   line-height: 1.35;
 }
 

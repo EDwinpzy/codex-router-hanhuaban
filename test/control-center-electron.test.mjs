@@ -1206,10 +1206,15 @@ test("electron boundary does not enable node integration or shell argv", async (
   assert.match(compatibilityMain, /import "\.\/electron\/main\.mjs"/);
   assert.doesNotMatch(compatibilityMain, /BrowserWindow|ipcMain|registerIpcHandlers/);
   const renderer = await readFile(new URL("../apps/control-center/src/App.tsx", import.meta.url), "utf8");
-  assert.match(renderer, /traffic-lights/);
+  // Windows/Linux 用标题栏右侧的 caption 按钮，不再画 macOS 风格红黄绿三点。
+  assert.match(renderer, /window-controls/);
+  assert.match(renderer, /window-control-close/);
+  assert.doesNotMatch(renderer, /traffic-lights/);
   assert.match(renderer, /native-titlebar/);
   const styles = await readFile(new URL("../apps/control-center/src/styles.css", import.meta.url), "utf8");
-  assert.match(styles, /\.traffic-lights/);
+  assert.match(styles, /\.window-controls/);
+  assert.match(styles, /\.window-control-close:hover/);
+  assert.doesNotMatch(styles, /\.traffic-light\b/);
   assert.match(styles, /native-titlebar/);
   assert.match(styles, /native-titlebar-darwin\.sidebar-collapsed \.titlebar[\s\S]*padding-left:\s*88px/);
   assert.doesNotMatch(renderer, /drag-region|no-drag/);
@@ -1218,6 +1223,12 @@ test("electron boundary does not enable node integration or shell argv", async (
   for (const label of ["Close window", "Minimize window", "Maximize or restore window"]) {
     assert.match(renderer, new RegExp(`aria-label=\\"${label}\\"`));
   }
+  // 窗控要能跟着窗口最大化状态在「最大化 / 还原」两套图标间切换。
+  assert.match(preload, /getWindowState:\s*\(\)\s*=>\s*call\("getWindowState"\)/);
+  assert.match(preload, /onWindowState\(listener\)/);
+  assert.match(ipc, /handle\("getWindowState"/);
+  assert.match(main, /createdWindow\.on\("maximize", publishWindowState\)/);
+  assert.match(main, /createdWindow\.on\("unmaximize", publishWindowState\)/);
   const runner = await readFile(new URL("../apps/control-center/electron/command-runner.mjs", import.meta.url), "utf8");
   assert.match(runner, /shell:\s*false/);
   assert.doesNotMatch(runner, /shell:\s*true/);
@@ -1269,6 +1280,27 @@ test("provider usage reads outlive optional account refreshes", async () => {
   assert.doesNotMatch(source, /\["provider-usage"\], \{ timeoutMs: 20_000 \}/);
 });
 
+test("the first screen's reads outlive a cold start", async () => {
+  const source = await readFile(new URL("../apps/control-center/electron/ipc.mjs", import.meta.url), "utf8");
+  assert.match(source, /const CORE_READ_TIMEOUT_MS = 90_000/);
+  // The three reads the first screen blocks on used to inherit the runner's
+  // 30-second default, which is the tightest budget in the app: the snapshot
+  // alone spends a third of it on a warm machine, and the first screen asks
+  // for all three -- plus five more -- at once, each as its own Node child.
+  for (const handler of [
+    /handle\("getSnapshot"[\s\S]{0,120}CORE_READ_TIMEOUT_MS/,
+    /handle\("getProviders"[\s\S]{0,160}CORE_READ_TIMEOUT_MS/,
+    /handle\("getPresence"[\s\S]{0,160}CORE_READ_TIMEOUT_MS/,
+  ]) assert.match(source, handler);
+  // The budget only reaches the child if the snapshot helper forwards its own
+  // options; a widened caller in front of a forwarded-nothing helper would
+  // leave the read on the default and pass every assertion above.
+  assert.match(
+    source,
+    /async function snapshot\(options = \{\}\) \{\n\s*return runControlJson\(\["--json"\], options\);/,
+  );
+});
+
 test("dashboard presents traffic statistics before route and service controls", async () => {
   const source = await readFile(new URL("../apps/control-center/src/pages/DashboardPage.tsx", import.meta.url), "utf8");
   const positions = {
@@ -1299,6 +1331,7 @@ test("preload exposes only the named control operations", async () => {
     "closeWindow",
     "setProviderEnabled",
     "discoverProviderModels",
+    "testRoute",
     "addProviderModels",
     "connectProvider",
     "saveProviderCredential",
@@ -1354,6 +1387,7 @@ test("preload constructs exact positional IPC payloads", async () => {
     ["getChatGptAccountPool", [], null],
     ["discoverProviderModels", ["provider"], { providerId: "provider", refresh: false }],
     ["discoverProviderModels", ["provider", { refresh: true }], { providerId: "provider", refresh: true }],
+    ["testRoute", ["provider/model-a"], { slug: "provider/model-a" }],
     ["setProviderEnabled", ["provider", false], { providerId: "provider", enabled: false }],
     ["addProviderModels", ["provider", ["model-a", "model-b"]], { providerId: "provider", modelIds: ["model-a", "model-b"] }],
     ["connectProvider", ["provider"], { providerId: "provider" }],
@@ -1663,27 +1697,33 @@ test("the model directory combines provider setup with de-duplicated model-famil
   // first instead of showing an empty list behind a disabled button.
   assert.match(models, /title="Connect a provider to get started"/);
 
-  // A single-route model already showed its identity in the row above, so the
-  // panel carries only what the summary left out.
-  assert.match(models, /function ModelDetails\(/);
+  // One panel shape for one route and for six. A single-route model used to
+  // open a definition list of its own, and that list had no live test in it,
+  // so the test control existed only for models reached through two accounts.
+  assert.doesNotMatch(models, /function ModelDetails\(/);
+  assert.doesNotMatch(models, /pm-model-details/);
+  assert.doesNotMatch(providerModelsCss, /pm-model-details/);
+  // Every row says which API surface it goes through, which is what the
+  // definition list's "Route" cell used to carry.
+  assert.match(models, /\{model\.slug\} · \{modelRouteKind\(model\)\}/);
   // Two cells, so a route stays one row: stacking the switch and the effort
   // menu doubled every row's height and repeated "Thinking" down the list.
   assert.match(models, /function SubagentToggle\(/);
   assert.match(models, /function SubagentEffort\(/);
   assert.match(models, /<span>Thinking<\/span>/);
-  assert.match(providerModelsCss, /grid-template-columns: minmax\(0, 1fr\) 78px 92px 70px 74px 104px/);
+  assert.match(providerModelsCss, /grid-template-columns: minmax\(0, 1fr\) 78px 92px 70px 74px 104px 100px/);
+  // The last column is the one live test per route: the same slot on every
+  // row, carrying the verdict in place and the router's reason in its title.
+  assert.match(models, /<span>Test<\/span>/);
+  assert.match(models, /className="pm-route-cell pm-route-test"/);
+  assert.match(models, /api\.testRoute\(slug\)/);
+  assert.match(models, /className="pm-route-test-button"/);
+  assert.match(providerModelsCss, /\.pm-route-test-button\s*\{/);
   // The effort control uses this page's own menu: a native select's popup is
   // shifted by the macOS checkmark gutter, which reads as misaligned in a table.
   assert.match(providerModelsCss, /\.pm-effort-menu \{/);
   assert.match(models, /className="pm-effort-trigger"/);
   assert.doesNotMatch(models, /<select[\s\S]{0,200}subagent thinking effort/);
-  assert.match(models, /<dt>Model id<\/dt>/);
-  assert.match(providerModelsCss, /\.pm-model-details\s*\{/);
-  assert.match(models, /<dd className="pm-model-details-controls">/);
-  assert.match(
-    providerModelsCss,
-    /\.pm-model-details dd\.pm-model-details-controls\s*\{[^}]*overflow:\s*visible/,
-  );
 
   // Adding republishes the whole catalog to every installed client and is the
   // slowest thing this page starts. Placeholder rows carrying the chosen slugs

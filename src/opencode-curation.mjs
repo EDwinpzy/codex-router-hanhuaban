@@ -235,6 +235,14 @@ const CURATION_ROUTES = Object.freeze({
       "qwen3.7-plus",
       "qwen3.8-flash",
       "qwen3.8-max",
+      // OpenCode documents Union Alpha Free on the Anthropic Messages
+      // protocol (`@ai-sdk/anthropic` at /zen/v1/messages), and the live Go
+      // catalog serves the same id at /zen/go/v1/messages. A live probe
+      // answers 200 there and 500 on both /chat/completions surfaces, so this
+      // is a measured route rather than a guess. The id carries no `-free`
+      // suffix even though its price is zero, which is why the anonymous free
+      // filter never saw it.
+      "union-alpha",
     ]),
     responsesProvider: "opencode-go-responses",
     responsesModels: Object.freeze([
@@ -266,7 +274,30 @@ const CURATION_ROUTES = Object.freeze({
       "qwen3.5-plus",
       "x-preview-f",
     ]),
-    models: Object.freeze({}),
+    models: Object.freeze({
+      // OpenCode's own published record for this exact id (the `opencode`
+      // provider in models.dev/api.json) is 262,144 context with a
+      // 131,072-token output limit, and the live Go route answers `cost: 0`
+      // per call. The window is deliberately withheld: curation's 0.85
+      // auto-compact ratio would leave only 39,321 tokens against that output
+      // limit, so declaring 262,144 would let a full-length completion overrun
+      // the window the entry itself declared. The entry keeps the conservative
+      // default and its description says so.
+      "union-alpha": Object.freeze({
+        outputLimit: 131_072,
+        inputModalities: Object.freeze(["text", "image"]),
+        displayName: "Union Alpha Free (opencode Go)",
+        isFree: true,
+        summary:
+          "Union Alpha Free, OpenCode's stealth agentic coding model, through the opencode Go subscription's Messages route.",
+        contextNote:
+          "The context window stays on the conservative default. models.dev publishes 262,144 " +
+          "for this exact id, but curation's 0.85 auto-compact ratio would leave only 39,321 " +
+          "tokens against the same record's 131,072-token output limit, so declaring 262,144 " +
+          "would let a full-length completion overrun the window the entry just declared.",
+        reasoningNote: UNDOCUMENTED_EFFORTS,
+      }),
+    }),
   }),
   "opencode-free": Object.freeze({
     providers: Object.freeze(["opencode-free", "opencode-free-responses"]),

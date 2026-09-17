@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Check, ChevronDown, Filter, KeyRound, Link2, LogIn, MoreHorizontal, Plus, SearchX, ShieldCheck, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, ChevronDown, Filter, KeyRound, Link2, LoaderCircle, LogIn, MoreHorizontal, PlugZap, Plus, SearchX, ShieldCheck, Trash2 } from "lucide-react";
 import { Badge, Button, CatalogSkeleton, Dialog, EmptyState, PageHeader, PanelSkeleton, SearchField, SkeletonBlock, Toggle } from "../components";
 import { BrandLogo, ProviderLogo, brandForModel } from "../provider-branding";
 import { formatContext, formatDateTime } from "../lib";
@@ -28,6 +28,7 @@ import type {
   RouterDataReady,
   RouterKnownModel,
   RouterModel,
+  RouteTestResult,
   RouterTarget,
 } from "../types";
 import "./providers-models.css";
@@ -105,6 +106,15 @@ interface CatalogViewState {
   error?: string;
 }
 
+/** The last live test of one route, held per slug so it outlives the list's
+ *  filters and the family panel's collapse. */
+type RouteTestState =
+  | { status: "idle" }
+  | { status: "testing" }
+  | { status: "ok" | "failed"; detail: string };
+
+const IDLE_ROUTE_TEST: RouteTestState = { status: "idle" };
+
 function catalogEligible(entry: ProviderDirectoryEntry): boolean {
   return Boolean(entry.setup?.configured && entry.setup.catalogSources?.length);
 }
@@ -141,6 +151,12 @@ function routeUsable(model: RouterModel): boolean {
   return model.available !== false;
 }
 
+function routeTestState(result: RouteTestResult): RouteTestState {
+  return result.ok
+    ? { status: "ok", detail: result.detail || "The route answered." }
+    : { status: "failed", detail: result.detail || "The route did not answer." };
+}
+
 export function ModelsPage({ target, catalog, setup, usage, api, refreshing, dataReady, onRefresh, runAction, focusRequest }: ModelsPageProps) {
   const [modelSearch, setModelSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -167,6 +183,10 @@ export function ModelsPage({ target, catalog, setup, usage, api, refreshing, dat
   // slowest thing this page starts; without a placeholder the models simply are
   // not there for the length of it and the click reads as having done nothing.
   const [pendingModels, setPendingModels] = useState<PendingCatalogModels>({});
+  // One live request per route. Each row answers on its own: a slow provider
+  // must not blank the rest of the list, and a verdict has to survive the
+  // filters and collapses that re-render the rows around it.
+  const [routeTests, setRouteTests] = useState<Record<string, RouteTestState>>({});
 
   // External model identity and picker visibility come from the router-owned
   // catalog. Native entries remain a Codex-only adapter concern and are merged
@@ -431,6 +451,30 @@ export function ModelsPage({ target, catalog, setup, usage, api, refreshing, dat
     setManagedProviderId((current) => (current === providerId ? null : providerId));
   };
 
+  // A test is deliberately not routed through runAction: it changes no router
+  // state, so there is nothing to refresh afterwards, and the answer belongs
+  // on the row. A failed test is a result the operator asked for, not an error
+  // this page should shout about; only a transport or version failure, which
+  // reaches the catch below, is worth the danger tone.
+  const testRoute = async (model: RouterModel) => {
+    if (!api) return;
+    const slug = model.slug;
+    setRouteTests((current) => ({ ...current, [slug]: { status: "testing" } }));
+    let next: RouteTestState;
+    try {
+      const result = await api.testRoute(slug);
+      next = routeTestState(result);
+    } catch (error) {
+      next = {
+        status: "failed",
+        detail: error instanceof Error && error.message
+          ? error.message
+          : "The route test did not finish.",
+      };
+    }
+    setRouteTests((current) => ({ ...current, [slug]: next }));
+  };
+
   const renderConnections = () => !dataReady.providers && !setup ? (
     <section className="pm-connections pm-connections-loading" aria-label="Loading provider connections" aria-busy="true">
       <SkeletonBlock />
@@ -604,6 +648,8 @@ export function ModelsPage({ target, catalog, setup, usage, api, refreshing, dat
       onRoutePicker={(model, visible) => void updatePicker(model.slug, visible)}
       onSubagent={(model, enabled) => void updateSubagent(model.slug, enabled)}
       onEffort={(model, effort) => void updateSubagentEffort(model.slug, effort)}
+      testValue={(model) => routeTests[model.slug] ?? IDLE_ROUTE_TEST}
+      onTest={(model) => void testRoute(model)}
       onConnect={(providerId) => {
         const entry = directoryById.get(providerId);
         if (!entry?.setup) return;
@@ -1038,6 +1084,8 @@ function ModelFamilyRow({
   onRoutePicker,
   onSubagent,
   onEffort,
+  testValue,
+  onTest,
   onConnect,
 }: {
   family: ModelFamily;
@@ -1055,6 +1103,8 @@ function ModelFamilyRow({
   onRoutePicker: (model: RouterModel, visible: boolean) => void;
   onSubagent: (model: RouterModel, enabled: boolean) => void;
   onEffort: (model: RouterModel, effort: string) => void;
+  testValue: (model: RouterModel) => RouteTestState;
+  onTest: (model: RouterModel) => void;
   onConnect: (providerId: string) => void;
 }) {
   const preferred = preferredFamilyRoute(family);
@@ -1116,118 +1166,46 @@ function ModelFamilyRow({
       </div>
       <div id={panelId} className="pm-family-panel" role="region" aria-labelledby={triggerId} hidden={!expanded}>
         {multiRoute ? (
-          <>
-            <div className="pm-family-route-note">
-              The same model reaches you through more than one account. Each one has its own credential, quota, and pricing.
-            </div>
-            {/* Labelling every row cost 12 words for 4 switches, and every row
-                sized its own columns so nothing lined up down the list. One
-                header, one shared grid. */}
-            <div className="pm-route-table" role="list" aria-label={`${family.displayName} routes`}>
-              <div className="pm-route-head" aria-hidden="true">
-                <span>Account</span>
-                <span>Context</span>
-                <span>Input</span>
-                <span>In picker</span>
-                <span>Subagents</span>
-                <span>Thinking</span>
-              </div>
-              {family.routes.map((model) => (
-                <ModelRouteRow
-                  key={model.slug}
-                  model={model}
-                  providerName={providerNames.get(model.provider) || providerDisplayName(model.provider)}
-                  pickerVisible={pickerValue(model)}
-                  selectedInSettings={subagentValue(model)}
-                  subagentEffort={effortValue(model)}
-                  apiAvailable={apiAvailable}
-                  onPickerChange={(checked) => onRoutePicker(model, checked)}
-                  onSubagentChange={(checked) => onSubagent(model, checked)}
-                  onEffortChange={(effort) => onEffort(model, effort)}
-                  onConnect={() => onConnect(model.provider)}
-                />
-              ))}
-            </div>
-          </>
-        ) : (
-          // A single-route model already showed its name and provider in the
-          // row above. Repeating that row inside itself explains nothing, so
-          // the panel carries only what the summary had to leave out.
-          <ModelDetails
-            model={family.routes[0]}
-            providerName={providerNames.get(family.routes[0].provider) || providerDisplayName(family.routes[0].provider)}
-            selectedInSettings={subagentValue(family.routes[0])}
-            subagentEffort={effortValue(family.routes[0])}
-            apiAvailable={apiAvailable}
-            onSubagentChange={(checked) => onSubagent(family.routes[0], checked)}
-            onEffortChange={(effort) => onEffort(family.routes[0], effort)}
-          />
-        )}
+          <div className="pm-family-route-note">
+            The same model reaches you through more than one account. Each one has its own credential, quota, and pricing.
+          </div>
+        ) : null}
+        {/* One panel shape for one route and for six. A single-route model used
+            to open a definition list of its own, and that list carried no live
+            test at all -- so the only route you could check was one of several.
+            Labelling every row cost 12 words for 4 switches, and every row
+            sized its own columns so nothing lined up down the list. One
+            header, one shared grid. */}
+        <div className="pm-route-table" role="list" aria-label={`${family.displayName} routes`}>
+          <div className="pm-route-head" aria-hidden="true">
+            <span>Account</span>
+            <span>Context</span>
+            <span>Input</span>
+            <span>In picker</span>
+            <span>Subagents</span>
+            <span>Thinking</span>
+            <span>Test</span>
+          </div>
+          {family.routes.map((model) => (
+            <ModelRouteRow
+              key={model.slug}
+              model={model}
+              providerName={providerNames.get(model.provider) || providerDisplayName(model.provider)}
+              pickerVisible={pickerValue(model)}
+              selectedInSettings={subagentValue(model)}
+              subagentEffort={effortValue(model)}
+              testState={testValue(model)}
+              apiAvailable={apiAvailable}
+              onPickerChange={(checked) => onRoutePicker(model, checked)}
+              onSubagentChange={(checked) => onSubagent(model, checked)}
+              onEffortChange={(effort) => onEffort(model, effort)}
+              onConnect={() => onConnect(model.provider)}
+              onTest={() => onTest(model)}
+            />
+          ))}
+        </div>
       </div>
     </article>
-  );
-}
-
-function ModelDetails({
-  model,
-  providerName,
-  selectedInSettings,
-  subagentEffort,
-  apiAvailable,
-  onSubagentChange,
-  onEffortChange,
-}: {
-  model: RouterModel;
-  providerName: string;
-  selectedInSettings: boolean;
-  subagentEffort: string;
-  apiAvailable: boolean;
-  onSubagentChange: (checked: boolean) => void;
-  onEffortChange: (effort: string) => void;
-}) {
-  return (
-    <dl className="pm-model-details">
-      <div>
-        <dt>Model id</dt>
-        <dd className="pm-model-details-mono">{model.slug}</dd>
-      </div>
-      <div>
-        <dt>Route</dt>
-        <dd>{providerName} · {modelRouteKind(model)}</dd>
-      </div>
-      {routeUsable(model) ? (
-        <div>
-          <dt>Subagents</dt>
-          {/* The effort popup extends below this definition-list cell. Keep
-              this cell visibly overflowing; the generic text cells still
-              ellipsize long ids and route descriptions. */}
-          <dd className="pm-model-details-controls">
-            <div className="pm-subagent-controls">
-              <SubagentToggle
-                model={model}
-                providerName={providerName}
-                selectedInSettings={selectedInSettings}
-                apiAvailable={apiAvailable}
-                onSubagentChange={onSubagentChange}
-              />
-              <SubagentEffort
-                model={model}
-                providerName={providerName}
-                selectedInSettings={selectedInSettings}
-                subagentEffort={subagentEffort}
-                apiAvailable={apiAvailable}
-                onEffortChange={onEffortChange}
-              />
-            </div>
-          </dd>
-        </div>
-      ) : (
-        <div>
-          <dt>Status</dt>
-          <dd>Connect {providerName} to use this route.</dd>
-        </div>
-      )}
-    </dl>
   );
 }
 
@@ -1255,22 +1233,26 @@ function ModelRouteRow({
   pickerVisible,
   selectedInSettings,
   subagentEffort,
+  testState,
   apiAvailable,
   onPickerChange,
   onSubagentChange,
   onEffortChange,
   onConnect,
+  onTest,
 }: {
   model: RouterModel;
   providerName: string;
   pickerVisible: boolean;
   selectedInSettings: boolean;
   subagentEffort: string;
+  testState: RouteTestState;
   apiAvailable: boolean;
   onPickerChange: (checked: boolean) => void;
   onSubagentChange: (checked: boolean) => void;
   onEffortChange: (effort: string) => void;
   onConnect: () => void;
+  onTest: () => void;
 }) {
   const identity = (
     <div className="pm-route-identity">
@@ -1278,7 +1260,11 @@ function ModelRouteRow({
       <div>
         <strong>{providerName}</strong>
         {model.isFree ? <span className="pm-route-free">Free</span> : null}
-        <small title={model.slug}>{model.slug}</small>
+        {/* The id and the API surface it goes through read together, which is
+            what the definition list used to say in a "Route" cell of its own. */}
+        <small title={`${model.slug} · ${modelRouteKind(model)}`}>
+          {model.slug} · {modelRouteKind(model)}
+        </small>
       </div>
     </div>
   );
@@ -1296,6 +1282,16 @@ function ModelRouteRow({
         <span className="pm-route-cell pm-route-connect">
           <Button variant="secondary" disabled={!apiAvailable} onClick={onConnect}>Connect {providerName}</Button>
         </span>
+        {/* A route with no account cannot be tested, but the control keeps its
+            column empty rather than reading as though it were never offered. */}
+        <RouteTestControl
+          model={model}
+          providerName={providerName}
+          state={testState}
+          disabled
+          hint={`Connect ${providerName} to test this route.`}
+          onTest={onTest}
+        />
       </article>
     );
   }
@@ -1333,12 +1329,69 @@ function ModelRouteRow({
           onEffortChange={onEffortChange}
         />
       </span>
+      <RouteTestControl
+        model={model}
+        providerName={providerName}
+        state={testState}
+        disabled={!apiAvailable || nativeClientManaged(model)}
+        hint={nativeClientManaged(model)
+          ? `${model.displayName} is served by your Codex session, not by an account in this router.`
+          : "Send one minimal live request through this route. It spends a little of this account's quota."}
+        onTest={onTest}
+      />
     </article>
   );
 }
 
-// The route row and the single-route details panel must say the same thing
-// about subagents, so they share the control rather than the wording.
+// One live request per account row. The label carries the verdict, because a
+// second badge beside a button is more chrome than a 92px column can hold, and
+// the tooltip carries the router's own account of the answer -- which is the
+// part that is worth reading when it fails.
+function RouteTestControl({
+  model,
+  providerName,
+  state,
+  disabled,
+  hint,
+  onTest,
+}: {
+  model: RouterModel;
+  providerName: string;
+  state: RouteTestState;
+  disabled: boolean;
+  hint: string;
+  onTest: () => void;
+}) {
+  const label = state.status === "testing"
+    ? "Testing…"
+    : state.status === "ok" ? "Works" : state.status === "failed" ? "Failed" : "Test";
+  return (
+    <span className="pm-route-cell pm-route-test">
+      <Button
+        variant="ghost"
+        className="pm-route-test-button"
+        data-state={state.status}
+        disabled={disabled || state.status === "testing"}
+        aria-label={`Test ${model.displayName} through ${providerName}`}
+        title={state.status === "ok" || state.status === "failed" ? state.detail : hint}
+        onClick={onTest}
+      >
+        {state.status === "testing" ? (
+          <LoaderCircle aria-hidden size={13} strokeWidth={1.7} className="spin" />
+        ) : state.status === "ok" ? (
+          <CheckCircle2 aria-hidden size={13} strokeWidth={1.7} />
+        ) : state.status === "failed" ? (
+          <AlertTriangle aria-hidden size={13} strokeWidth={1.7} />
+        ) : (
+          <PlugZap aria-hidden size={13} strokeWidth={1.7} />
+        )}
+        {label}
+      </Button>
+    </span>
+  );
+}
+
+// One definition of what subagents look like on a route, shared by every row.
 // Two cells, so the table keeps one row per route. Stacking the switch and the
 // effort menu made every row two lines tall and repeated the word "Thinking"
 // down the whole list -- the same noise the column headers removed.

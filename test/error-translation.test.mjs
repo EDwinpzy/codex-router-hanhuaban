@@ -6,6 +6,7 @@ import {
   extractUpstreamDetail,
   gatewayErrorStatus,
   translateGatewayError,
+  upstreamFailureKind,
 } from "../src/error-translation.mjs";
 
 const LITELLM_503_BODY = JSON.stringify({
@@ -558,4 +559,51 @@ test("a genuine rate limit is still a rate limit", () => {
     retryAfterSeconds: 30,
   });
   assert.equal(translated.error.type, "rate_limit_error");
+});
+
+// DeepSeek answers this when its own filter refuses the content, and Command
+// Code relays it verbatim. The operator saw the raw provider JSON ahead of the
+// sentence; the sentence is what tells them a retry is wasted and that the only
+// moves are changing the content or the model.
+test("a provider content refusal says so instead of printing raw JSON", () => {
+  const bodyText = JSON.stringify({
+    error: {
+      message: "Content Exists Risk",
+      type: "AI_APICallError",
+      param: { error: "Content Exists Risk", statusCode: 400, isRetryable: false },
+    },
+    providerMetadata: { gateway: { routing: { originalModelId: "deepseek/deepseek-v4.1-flash" } } },
+  });
+  const translated = translateGatewayError({
+    status: 400,
+    bodyText,
+    modelName: "DeepSeek V4.1 Flash (Command Code)",
+    providerName: "commandcode",
+    providerKind: "openai-compatible",
+    providerAuthMode: "api-key",
+  });
+  assert.equal(translated.error.type, "invalid_request_error");
+  assert.match(translated.error.message, /refused this turn on content grounds/);
+  assert.match(translated.error.message, /not retryable/);
+  assert.doesNotMatch(translated.error.message, /re-run codex-router setup/i);
+});
+
+// A refusal is not evidence about provider health: classifying it would cool
+// the provider down and hand the next turn to another model on its own.
+test("a content refusal is not a quota or health signal", () => {
+  const bodyText = JSON.stringify({ error: { message: "Content Exists Risk" } });
+  assert.equal(upstreamFailureKind({ status: 400, bodyText }), undefined);
+});
+
+test("an ordinary 400 is still an ordinary 400", () => {
+  const translated = translateGatewayError({
+    status: 400,
+    bodyText: JSON.stringify({ error: { message: "Invalid input", param: "messages.7.content" } }),
+    modelName: "DeepSeek V4.1 Flash (Command Code)",
+    providerName: "commandcode",
+    providerKind: "openai-compatible",
+    providerAuthMode: "api-key",
+  });
+  assert.match(translated.error.message, /rejected the request for/);
+  assert.doesNotMatch(translated.error.message, /content grounds/);
 });

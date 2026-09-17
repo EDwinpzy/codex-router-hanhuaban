@@ -54,7 +54,7 @@
 
 .usage-page .us-source-select > span {
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -106,7 +106,7 @@
   margin: 0 0 8px;
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 650;
   letter-spacing: 0.065em;
   text-overflow: ellipsis;
@@ -147,7 +147,7 @@
   margin-top: 7px;
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -186,7 +186,7 @@
   border-radius: 5px;
   background: transparent;
   color: var(--ink-subtle);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 600;
   cursor: pointer;
   transition: background 140ms ease, color 140ms ease, transform 90ms ease;
@@ -266,7 +266,7 @@
   align-items: center;
   gap: 12px;
   color: var(--ink-faint);
-  font-size: 8px;
+  font-size: calc(8px * var(--fs-scale));
 }
 
 .usage-page .us-chart-legend span {
@@ -304,8 +304,8 @@
   flex-direction: column;
   justify-content: space-between;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 7.5px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(7.5px * var(--fs-scale));
   pointer-events: none;
 }
 
@@ -351,7 +351,7 @@
   background: var(--raised);
   box-shadow: 0 8px 22px var(--shadow);
   color: var(--ink-strong);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   line-height: 1.3;
   pointer-events: none;
   opacity: 0;
@@ -393,15 +393,15 @@
 
 .usage-page .us-chart-tooltip-date {
   color: var(--ink-subtle);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   font-weight: 650;
   letter-spacing: 0.02em;
 }
 
 .usage-page .us-chart-tooltip-total {
   color: var(--ink-strong);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 15px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(15px * var(--fs-scale));
   font-variant-numeric: tabular-nums;
   font-weight: 650;
   letter-spacing: -0.02em;
@@ -410,8 +410,8 @@
 .usage-page .us-chart-tooltip-exact {
   margin-top: -2px;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(9px * var(--fs-scale));
   font-variant-numeric: tabular-nums;
 }
 
@@ -430,7 +430,7 @@
   gap: 7px;
   min-width: 0;
   color: var(--ink-subtle);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   line-height: 1.2;
 }
 
@@ -456,8 +456,8 @@
 
 .usage-page .us-chart-tooltip-row > strong {
   color: var(--ink-strong);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(9px * var(--fs-scale));
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
@@ -467,7 +467,7 @@
   padding-top: 8px;
   border-top: 1px solid var(--line);
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   line-height: 1.35;
 }
 
@@ -481,8 +481,8 @@
   justify-content: space-between;
   padding-top: 7px;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(8px * var(--fs-scale));
 }
 
 .usage-page .us-chart-hint {
@@ -493,7 +493,7 @@
   border-left: 3px solid var(--telemetry-accent);
   background: color-mix(in srgb, var(--telemetry-accent) 6%, var(--surface-1));
   color: var(--ink-subtle);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   line-height: 1.4;
 }
 
@@ -503,7 +503,7 @@
 
 .usage-page .us-chart-hint strong {
   color: var(--ink-strong);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   font-weight: 650;
 }
 
@@ -520,13 +520,13 @@
   border-radius: 10px;
   background: color-mix(in srgb, var(--telemetry-accent) 5%, var(--surface-0));
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   line-height: 1.4;
 }
 
 .usage-page .us-aggregate-note strong {
   color: var(--ink-strong);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   font-weight: 650;
 }
 
@@ -567,7 +567,7 @@
 
 .usage-page .us-token-mix span {
   color: var(--ink-faint);
-  font-size: 8px;
+  font-size: calc(8px * var(--fs-scale));
   font-weight: 650;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -576,15 +576,15 @@
 .usage-page .us-token-mix strong {
   margin-top: 4px;
   color: var(--ink-strong);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(11px * var(--fs-scale));
   font-weight: 650;
 }
 
 .usage-page .us-token-mix small {
   margin-top: 2px;
   color: var(--ink-faint);
-  font-size: 7.5px;
+  font-size: calc(7.5px * var(--fs-scale));
 }
 
 .usage-page .us-live-note {
@@ -596,7 +596,7 @@
   border-radius: 10px;
   background: color-mix(in srgb, var(--accent) 6%, var(--surface-1));
   color: var(--ink-subtle);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   line-height: 1.35;
 }
 
@@ -662,7 +662,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 8px;
+  font-size: calc(8px * var(--fs-scale));
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -677,7 +677,7 @@
 }
 
 .usage-page .us-metric-title strong {
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs-scale));
   font-weight: 600;
 }
 
@@ -719,7 +719,7 @@
 
 .usage-page .us-metric-facts dt {
   color: var(--ink-faint);
-  font-size: 7.5px;
+  font-size: calc(7.5px * var(--fs-scale));
   text-transform: uppercase;
 }
 
@@ -727,8 +727,8 @@
   margin: 2px 0 0;
   overflow: hidden;
   color: var(--ink-strong);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(8px * var(--fs-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -736,14 +736,14 @@
 .usage-page .us-metric-card p {
   margin: 9px 0 0;
   color: var(--ink-subtle);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   line-height: 1.4;
 }
 
 .usage-page .us-metric-card footer {
   margin-top: 8px;
   color: var(--ink-faint);
-  font-size: 8px;
+  font-size: calc(8px * var(--fs-scale));
   line-height: 1.35;
 }
 
@@ -781,7 +781,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
 }
 
 .usage-page .us-model-list {
@@ -817,7 +817,7 @@
 .usage-page .us-model-heading strong {
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -825,13 +825,13 @@
 
 .usage-page .us-model-heading > strong {
   flex: 0 0 auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .usage-page .us-model-heading small {
   margin-top: 2px;
   color: var(--ink-faint);
-  font-size: 8px;
+  font-size: calc(8px * var(--fs-scale));
 }
 
 .usage-page .us-model-meter {
@@ -855,8 +855,8 @@
   gap: 4px 12px;
   margin-top: 6px;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 7.7px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(7.7px * var(--fs-scale));
 }
 
 .usage-page .us-model-pagination {
@@ -869,7 +869,7 @@
   padding-top: 7px;
   border-top: 1px solid var(--line);
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .usage-page .us-source-list {
@@ -881,7 +881,7 @@
 .usage-page .us-source-group-label {
   margin: 18px 0 9px;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 650;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -927,7 +927,7 @@
 .usage-page .us-source-name strong,
 .usage-page .us-source-value strong {
   color: var(--ink-strong);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   font-weight: 600;
 }
 
@@ -935,7 +935,7 @@
 .usage-page .us-source-value small {
   margin-top: 3px;
   color: var(--ink-faint);
-  font-size: 7.8px;
+  font-size: calc(7.8px * var(--fs-scale));
 }
 
 .usage-page .us-source-value {
@@ -944,14 +944,14 @@
 }
 
 .usage-page .us-source-value strong {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .usage-page .us-loading {
   display: grid;
   gap: 15px;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
 }
 
 .usage-page .us-loading-summary,
@@ -1064,7 +1064,7 @@
   border: 0;
   background: transparent;
   color: var(--ink-strong);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs-scale));
 }
 
 .status-page .st-model-list {
@@ -1111,7 +1111,7 @@
 .status-page .st-model-heading strong {
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 11px;
+  font-size: calc(11px * var(--fs-scale));
   font-weight: 620;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1119,13 +1119,13 @@
 
 .status-page .st-model-heading > strong {
   flex: 0 0 auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .status-page .st-model-heading small {
   margin-top: 4px;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
 }
 
 .status-page .st-model-meter {
@@ -1149,8 +1149,8 @@
   gap: 5px 14px;
   margin-top: 8px;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8.5px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .status-page .st-model-pagination {
@@ -1160,7 +1160,7 @@
   justify-content: space-between;
   gap: 12px;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
 }
 
 .status-page .st-router-state {
@@ -1189,14 +1189,14 @@
 
 .status-page .st-router-state strong {
   color: var(--ink-strong);
-  font-size: 11px;
+  font-size: calc(11px * var(--fs-scale));
   font-weight: 620;
 }
 
 .status-page .st-router-state small {
   margin-top: 3px;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .status-page .st-status-orb {
@@ -1322,14 +1322,14 @@
 .status-page .st-subsection-heading h3 {
   margin: 0;
   color: var(--ink-strong);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs-scale));
   font-weight: 620;
 }
 
 .status-page .st-subsection-heading p {
   margin: 3px 0 0;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .status-page .st-live-list {
@@ -1387,7 +1387,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1400,7 +1400,7 @@
   gap: 4px 10px;
   margin-top: 4px;
   color: var(--ink-faint);
-  font-size: 8px;
+  font-size: calc(8px * var(--fs-scale));
 }
 
 .status-page .st-live-list article > time {
@@ -1408,14 +1408,14 @@
   align-items: baseline;
   gap: 4px;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(8px * var(--fs-scale));
   white-space: nowrap;
 }
 
 .status-page .st-live-list article > time strong {
   color: var(--warning);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   font-weight: 650;
 }
 
@@ -1440,14 +1440,14 @@
 .status-page .st-context-window-heading h3 {
   margin: 0;
   color: var(--ink-strong);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs-scale));
   font-weight: 620;
 }
 
 .status-page .st-context-window-heading p {
   margin: 0;
   color: var(--ink-faint);
-  font-size: 8px;
+  font-size: calc(8px * var(--fs-scale));
 }
 
 .status-page .st-context-windows {
@@ -1470,7 +1470,7 @@
 
 .status-page .st-context-windows dt {
   color: var(--ink-faint);
-  font-size: 7.5px;
+  font-size: calc(7.5px * var(--fs-scale));
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -1479,7 +1479,7 @@
   margin: 5px 0 0;
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 14px;
+  font-size: calc(14px * var(--fs-scale));
   font-weight: 650;
   letter-spacing: -0.025em;
   text-overflow: ellipsis;
@@ -1491,7 +1491,7 @@
   margin-top: 3px;
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 7.5px;
+  font-size: calc(7.5px * var(--fs-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1506,7 +1506,7 @@
 
 .status-page .st-context-stats dt {
   color: var(--ink-faint);
-  font-size: 7.5px;
+  font-size: calc(7.5px * var(--fs-scale));
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -1515,7 +1515,7 @@
   margin: 5px 0 0;
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 14px;
+  font-size: calc(14px * var(--fs-scale));
   font-weight: 650;
   letter-spacing: -0.025em;
   text-overflow: ellipsis;
@@ -1526,14 +1526,14 @@
   display: block;
   margin-top: 3px;
   color: var(--ink-faint);
-  font-size: 7.5px;
+  font-size: calc(7.5px * var(--fs-scale));
   line-height: 1.35;
 }
 
 .status-page .st-telemetry-note {
   margin: 8px 0 0;
   color: var(--ink-faint);
-  font-size: 8px;
+  font-size: calc(8px * var(--fs-scale));
   line-height: 1.45;
 }
 
@@ -1555,7 +1555,7 @@
 .status-page .st-context-savings h3 {
   margin: 0;
   color: var(--ink-strong);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   font-weight: 620;
 }
 
@@ -1563,7 +1563,7 @@
 .status-page .st-context-savings-empty {
   margin: 3px 0 0;
   color: var(--ink-faint);
-  font-size: 7.8px;
+  font-size: calc(7.8px * var(--fs-scale));
   line-height: 1.4;
 }
 
@@ -1584,7 +1584,7 @@
   border-radius: 4px;
   background: transparent;
   color: var(--ink-faint);
-  font-size: 7px;
+  font-size: calc(7px * var(--fs-scale));
   font-weight: 650;
   cursor: pointer;
 }
@@ -1620,7 +1620,7 @@
   gap: 10px;
   margin-top: 4px;
   color: var(--ink-faint);
-  font-size: 7.5px;
+  font-size: calc(7.5px * var(--fs-scale));
 }
 
 .status-page .st-reset-list,
@@ -1679,7 +1679,7 @@
 
 .status-page .st-reset-list article > span strong {
   color: var(--ink-strong);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 600;
 }
 
@@ -1687,7 +1687,7 @@
 .status-page .st-reset-list time small {
   margin-top: 3px;
   color: var(--ink-faint);
-  font-size: 7.7px;
+  font-size: calc(7.7px * var(--fs-scale));
 }
 
 .status-page .st-reset-list time {
@@ -1696,8 +1696,8 @@
 
 .status-page .st-reset-list time strong {
   color: var(--ink-strong);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8.5px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(8.5px * var(--fs-scale));
   font-weight: 600;
 }
 
@@ -1730,14 +1730,14 @@
 
 .status-page .st-speed-list strong {
   color: var(--ink-strong);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 600;
 }
 
 .status-page .st-speed-list small {
   margin-top: 3px;
   color: var(--ink-faint);
-  font-size: 7.7px;
+  font-size: calc(7.7px * var(--fs-scale));
 }
 
 .status-page .st-speed-list article > span:last-child {
@@ -1788,7 +1788,7 @@
 
 .status-page .st-event-list strong {
   color: var(--ink-strong);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   font-weight: 600;
 }
 
@@ -1796,13 +1796,13 @@
 .status-page .st-event-list time {
   margin-top: 3px;
   color: var(--ink-faint);
-  font-size: 7.5px;
+  font-size: calc(7.5px * var(--fs-scale));
 }
 
 .status-page .st-event-duration,
 .status-page .st-event-metering,
 .status-page .st-event-time {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .status-page .st-event-time {

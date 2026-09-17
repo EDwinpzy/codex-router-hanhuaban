@@ -1,6 +1,8 @@
 :root {
+  /* 全局字体缩放：改这一个数就能整体放大/缩小界面字体 */
+  --fs-scale: 1.25;
   color-scheme: light;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   font-synthesis: none;
   --surface-0: #ffffff;
   --surface-1: #f8f8f7;
@@ -65,7 +67,7 @@ body,
 body {
   background: var(--surface-0);
   color: var(--ink);
-  font-size: 13px;
+  font-size: calc(13px * var(--fs-scale));
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
   user-select: none;
@@ -188,7 +190,7 @@ button {
   padding-left: 88px;
 }
 
-/* Windows/Linux draw macOS-style traffic lights on the left. */
+/* Windows/Linux 用右侧的原生风格 caption 按钮，左侧不再画红黄绿三点。 */
 .native-titlebar-win32 .sidebar-window-row,
 .native-titlebar-linux .sidebar-window-row {
   padding-left: 16px;
@@ -199,29 +201,66 @@ button {
   padding-left: 16px;
 }
 
-.traffic-lights {
+/* 窗控要贴到窗口右上角，所以标题栏右侧不留内边距。 */
+.native-titlebar-win32 .titlebar,
+.native-titlebar-linux .titlebar {
+  padding-right: 0;
+}
+
+/* Windows 11 caption 按钮：46px 宽、撑满 44px 标题栏、悬停浅灰、关闭悬停变红。 */
+.window-controls {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-right: 10px;
+  align-self: stretch;
+  margin-left: 6px;
   -webkit-app-region: no-drag;
 }
 
-.traffic-light {
-  width: 12px;
-  height: 12px;
-  border: 0;
+.window-control {
+  display: inline-grid;
+  width: 46px;
+  align-self: stretch;
   padding: 0;
-  border-radius: 50%;
-  background: #d0d0d0;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-subtle);
+  cursor: default;
+  transition: background 120ms ease, color 120ms ease;
 }
 
-.traffic-light-close { background: #ff5f57; }
-.traffic-light-minimize { background: #febc2e; }
-.traffic-light-maximize { background: #28c840; }
+.window-control svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
 
-.traffic-light:hover { filter: brightness(0.92); }
-.traffic-light:active { filter: brightness(0.82); }
+.window-control:hover {
+  background: var(--surface-3);
+  color: var(--ink-strong);
+}
+
+.window-control:active {
+  background: var(--line-strong);
+}
+
+/* 键盘焦点沿用全局 :focus-visible 的底色写法：窗控撑满标题栏，画焦点圈
+   会沿着窗口边缘多出一道框，所以这里只改底色和字形色。 */
+.window-control:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-1));
+  color: var(--ink-strong);
+}
+
+.window-control-close:hover {
+  background: #c42b1c;
+  color: #ffffff;
+}
+
+.window-control-close:active {
+  background: #b1271a;
+  color: #ffffff;
+}
 
 .sidebar-collapsed .titlebar-toggle {
   position: relative;
@@ -288,7 +327,7 @@ button {
   flex: 1;
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 14px;
+  font-size: calc(14px * var(--fs-scale));
   font-weight: 650;
   letter-spacing: -0.015em;
   line-height: 1.2;
@@ -385,21 +424,21 @@ button {
 
 .primary-nav strong {
   color: inherit;
-  font-size: 12px;
+  font-size: calc(12px * var(--fs-scale));
   font-weight: 520;
 }
 
 .primary-nav .badge {
   min-height: 16px;
   padding: 1px 5px;
-  font-size: 7px;
+  font-size: calc(7px * var(--fs-scale));
   letter-spacing: 0.035em;
 }
 
 .nav-group-label {
   margin: 14px 8px 4px;
   color: var(--ink-faint);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   font-weight: 500;
   letter-spacing: 0.02em;
 }
@@ -407,7 +446,7 @@ button {
 .sidebar-no-results {
   margin: 12px 8px;
   color: var(--ink-faint);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
 }
 
 .sidebar-footer {
@@ -458,14 +497,14 @@ button {
 
 .sidebar-health strong {
   color: var(--ink);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs-scale));
   font-weight: 540;
 }
 
 .sidebar-health small {
   margin-top: 2px;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
 }
 
 .app-main {
@@ -491,7 +530,7 @@ button {
   padding: 0 14px;
   border-bottom: 1px solid var(--line);
   color: var(--ink-faint);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs-scale));
 }
 
 .title-tabs {
@@ -502,20 +541,20 @@ button {
 
 .title-tabs strong {
   color: var(--ink-strong);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--fs-scale));
   font-weight: 600;
 }
 
 .title-tabs span {
   color: var(--ink-subtle);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs-scale));
 }
 
 .title-tabs .badge {
   min-height: 17px;
   padding: 1px 5px;
   color: var(--warning);
-  font-size: 7.5px;
+  font-size: calc(7.5px * var(--fs-scale));
 }
 
 .titlebar-spacer {
@@ -573,8 +612,8 @@ button {
 .page-eyebrow {
   margin: 0 0 7px;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 650;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -593,7 +632,7 @@ button {
   max-width: 720px;
   margin: 8px 0 0;
   color: var(--ink-subtle);
-  font-size: 13px;
+  font-size: calc(13px * var(--fs-scale));
   line-height: 1.5;
 }
 
@@ -617,7 +656,7 @@ button {
   padding: 6px 12px;
   border: 1px solid transparent;
   border-radius: 9px;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--fs-scale));
   font-weight: 540;
   white-space: nowrap;
   cursor: pointer;
@@ -674,7 +713,7 @@ textarea {
   border-radius: 10px;
   background: var(--surface-0);
   color: var(--ink);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--fs-scale));
 }
 
 select {
@@ -701,7 +740,7 @@ textarea::placeholder {
   border-radius: 999px;
   background: var(--surface-2);
   color: var(--ink-subtle);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   font-weight: 600;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -737,7 +776,7 @@ textarea::placeholder {
 .stat-strip dt {
   margin-bottom: 7px;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 560;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -747,7 +786,7 @@ textarea::placeholder {
   margin: 0;
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 22px;
+  font-size: calc(22px * var(--fs-scale));
   font-weight: 630;
   letter-spacing: -0.035em;
   line-height: 1.05;
@@ -760,7 +799,7 @@ textarea::placeholder {
   margin-top: 5px;
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -783,7 +822,7 @@ textarea::placeholder {
   border-radius: 5px;
   background: transparent;
   color: var(--ink-subtle);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs-scale));
   font-weight: 520;
   cursor: pointer;
 }
@@ -806,7 +845,7 @@ textarea::placeholder {
 .segmented-control.compact button {
   min-height: 25px;
   padding: 3px 8px;
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
 }
 
 .page-stack {
@@ -866,14 +905,14 @@ textarea::placeholder {
 
 .service-health-summary-copy strong {
   color: var(--ink-strong);
-  font-size: 11px;
+  font-size: calc(11px * var(--fs-scale));
   font-weight: 620;
 }
 
 .service-health-summary-copy small {
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -928,7 +967,7 @@ textarea::placeholder {
 .service-health-row strong {
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 11px;
+  font-size: calc(11px * var(--fs-scale));
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -937,7 +976,7 @@ textarea::placeholder {
 .service-health-row small {
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -960,7 +999,7 @@ textarea::placeholder {
 
 .service-health-kicker {
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -975,7 +1014,7 @@ textarea::placeholder {
   border: 0;
   background: transparent;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   cursor: pointer;
 }
 
@@ -1020,13 +1059,13 @@ textarea::placeholder {
 
 .service-health-chip strong {
   color: var(--ink-strong);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 600;
 }
 
 .service-health-chip small {
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .section-heading {
@@ -1040,7 +1079,7 @@ textarea::placeholder {
 .section-heading h2 {
   margin: 0;
   color: var(--ink-strong);
-  font-size: 17px;
+  font-size: calc(17px * var(--fs-scale));
   font-weight: 580;
   letter-spacing: -0.012em;
 }
@@ -1049,14 +1088,14 @@ textarea::placeholder {
   max-width: 760px;
   margin: 6px 0 0;
   color: var(--ink-subtle);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--fs-scale));
   line-height: 1.5;
 }
 
 .section-footnote,
 .restart-note {
   color: var(--ink-faint);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   line-height: 1.5;
 }
 
@@ -1135,7 +1174,7 @@ textarea::placeholder {
   align-items: center;
   gap: 6px;
   color: var(--ink-subtle);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--fs-scale));
 }
 
 .check-label input {
@@ -1159,8 +1198,8 @@ textarea::placeholder {
 .model-group h3 {
   margin: 0;
   color: var(--ink-subtle);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1168,7 +1207,7 @@ textarea::placeholder {
 
 .model-group > header span {
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
 }
 
 .table-list {
@@ -1232,15 +1271,15 @@ textarea::placeholder {
 
 .model-identity strong {
   color: var(--ink-strong);
-  font-size: 11px;
+  font-size: calc(11px * var(--fs-scale));
   font-weight: 560;
 }
 
 .model-identity small {
   margin-top: 3px;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8.5px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .model-meta,
@@ -1250,7 +1289,7 @@ textarea::placeholder {
   align-items: center;
   gap: 12px;
   color: var(--ink-subtle);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
 }
 
 .model-controls {
@@ -1264,7 +1303,7 @@ textarea::placeholder {
   align-items: center;
   gap: 7px;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .toggle {
@@ -1331,8 +1370,8 @@ textarea::placeholder {
 }
 
 .inline-notice > svg { flex: 0 0 auto; margin-top: 1px; }
-.inline-notice strong { display: block; color: var(--ink-strong); font-size: 10.5px; font-weight: 560; }
-.inline-notice p { margin: 3px 0 0; font-size: 9.5px; line-height: 1.45; }
+.inline-notice strong { display: block; color: var(--ink-strong); font-size: calc(10.5px * var(--fs-scale)); font-weight: 560; }
+.inline-notice p { margin: 3px 0 0; font-size: calc(9.5px * var(--fs-scale)); line-height: 1.45; }
 .notice-success { border-color: color-mix(in srgb, var(--success) 25%, var(--line)); background: var(--success-soft); color: var(--success); }
 .notice-warning { border-color: color-mix(in srgb, var(--warning) 25%, var(--line)); background: var(--warning-soft); color: var(--warning); }
 .notice-danger { border-color: color-mix(in srgb, var(--danger) 25%, var(--line)); background: var(--danger-soft); color: var(--danger); }
@@ -1359,8 +1398,8 @@ textarea::placeholder {
   color: var(--ink-faint);
 }
 
-.empty-state strong { color: var(--ink-strong); font-size: 11px; font-weight: 560; }
-.empty-state p { max-width: 390px; margin: 5px 0 0; color: var(--ink-subtle); font-size: 10px; line-height: 1.5; }
+.empty-state strong { color: var(--ink-strong); font-size: calc(11px * var(--fs-scale)); font-weight: 560; }
+.empty-state p { max-width: 390px; margin: 5px 0 0; color: var(--ink-subtle); font-size: calc(10px * var(--fs-scale)); line-height: 1.5; }
 
 .local-model-row {
   display: grid;
@@ -1392,7 +1431,7 @@ textarea::placeholder {
   min-width: 0;
   overflow: hidden;
   color: var(--ink-strong);
-  font-size: 11px;
+  font-size: calc(11px * var(--fs-scale));
   font-weight: 580;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1401,7 +1440,7 @@ textarea::placeholder {
 .local-model-identity span {
   overflow: hidden;
   color: var(--ink-subtle);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1411,8 +1450,8 @@ textarea::placeholder {
   margin-top: 3px;
   overflow: hidden;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(8px * var(--fs-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1429,7 +1468,7 @@ textarea::placeholder {
   align-items: center;
   gap: 7px;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .install-form > label,
@@ -1438,7 +1477,7 @@ textarea::placeholder {
   display: block;
   margin-bottom: 6px;
   color: var(--ink-subtle);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
   font-weight: 540;
 }
 
@@ -1454,7 +1493,7 @@ textarea::placeholder {
 .install-form input {
   min-width: 0;
   flex: 1;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .download-progress {
@@ -1468,7 +1507,7 @@ textarea::placeholder {
   display: flex;
   justify-content: space-between;
   color: var(--ink);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
 }
 
 .download-progress progress,
@@ -1485,7 +1524,7 @@ textarea::placeholder {
 progress::-webkit-progress-bar { border-radius: 999px; background: var(--surface-3); }
 progress::-webkit-progress-value { border-radius: 999px; background: var(--accent); }
 
-.download-progress small { display: block; margin-top: 5px; color: var(--ink-faint); font-size: 9px; }
+.download-progress small { display: block; margin-top: 5px; color: var(--ink-faint); font-size: calc(9px * var(--fs-scale)); }
 
 .mlx-install-card {
   overflow: hidden;
@@ -1500,20 +1539,20 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   align-items: center;
 }
 
-.mlx-install-copy > strong { font-size: 12px; font-weight: 630; }
+.mlx-install-copy > strong { font-size: calc(12px * var(--fs-scale)); font-weight: 630; }
 
 .mlx-install-copy p {
   max-width: 760px;
   margin: 6px 0 9px;
   color: var(--ink-subtle);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   line-height: 1.55;
 }
 
 .mlx-install-copy code,
 .mlx-install-card .inline-notice code {
   color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: .92em;
 }
 
@@ -1521,7 +1560,7 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   display: block;
   margin-top: 5px;
   color: var(--ink-faint);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
 }
 
 .mlx-prerequisites {
@@ -1535,7 +1574,7 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   align-items: center;
   gap: 5px;
   color: var(--ink-subtle);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
 }
 
 .mlx-prerequisites i {
@@ -1556,7 +1595,7 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 
 .mlx-install-actions > small {
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   line-height: 1.4;
   text-align: center;
 }
@@ -1615,26 +1654,26 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 
 .reader-card header strong {
   color: var(--ink-strong);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   font-weight: 560;
 }
 
 .reader-card header small {
   margin-top: 3px;
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .reader-card p {
   margin: 10px 0 7px;
   color: var(--ink-subtle);
-  font-size: 9px;
+  font-size: calc(9px * var(--fs-scale));
   line-height: 1.45;
 }
 
 .reader-score {
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
 }
 
 .reader-card footer {
@@ -1670,8 +1709,8 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 .quick-picks button > span { min-width: 0; }
 .quick-picks strong,
 .quick-picks small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.quick-picks strong { color: var(--ink-strong); font-size: 10px; font-weight: 540; }
-.quick-picks small { margin-top: 3px; color: var(--ink-faint); font-size: 8.5px; }
+.quick-picks strong { color: var(--ink-strong); font-size: calc(10px * var(--fs-scale)); font-weight: 540; }
+.quick-picks small { margin-top: 3px; color: var(--ink-faint); font-size: calc(8.5px * var(--fs-scale)); }
 
 .harness-stage {
   display: grid;
@@ -1699,8 +1738,8 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   box-shadow: 0 10px 26px var(--shadow);
 }
 
-.harness-stage h2 { margin: 15px 0 0; color: var(--ink-strong); font-size: 20px; font-weight: 620; letter-spacing: -0.025em; }
-.harness-stage > p { max-width: 570px; margin: 8px 0 24px; color: var(--ink-subtle); font-size: 11.5px; line-height: 1.6; }
+.harness-stage h2 { margin: 15px 0 0; color: var(--ink-strong); font-size: calc(20px * var(--fs-scale)); font-weight: 620; letter-spacing: -0.025em; }
+.harness-stage > p { max-width: 570px; margin: 8px 0 24px; color: var(--ink-subtle); font-size: calc(11.5px * var(--fs-scale)); line-height: 1.6; }
 
 .harness-roadmap {
   display: grid;
@@ -1729,9 +1768,9 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 .context-key strong,
 .context-key small { display: block; }
 .harness-roadmap strong,
-.context-key strong { color: var(--ink-strong); font-size: 10px; font-weight: 550; }
+.context-key strong { color: var(--ink-strong); font-size: calc(10px * var(--fs-scale)); font-weight: 550; }
 .harness-roadmap small,
-.context-key small { margin-top: 4px; color: var(--ink-subtle); font-size: 8.8px; line-height: 1.45; }
+.context-key small { margin-top: 4px; color: var(--ink-subtle); font-size: calc(8.8px * var(--fs-scale)); line-height: 1.45; }
 
 .simple-list {
   overflow: hidden;
@@ -1753,8 +1792,8 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 .simple-list > div:last-child { border-bottom: 0; }
 .simple-list strong,
 .simple-list small { display: block; }
-.simple-list strong { color: var(--ink-strong); font-size: 10.5px; font-weight: 540; }
-.simple-list small { margin-top: 3px; color: var(--ink-faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 8.5px; }
+.simple-list strong { color: var(--ink-strong); font-size: calc(10.5px * var(--fs-scale)); font-weight: 540; }
+.simple-list small { margin-top: 3px; color: var(--ink-faint); font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: calc(8.5px * var(--fs-scale)); }
 
 .context-layout {
   display: grid;
@@ -1782,8 +1821,8 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   display: block;
 }
 
-.setting-row strong { color: var(--ink-strong); font-size: 10.5px; font-weight: 550; }
-.setting-row small { max-width: 600px; margin-top: 4px; color: var(--ink-subtle); font-size: 9.3px; line-height: 1.45; }
+.setting-row strong { color: var(--ink-strong); font-size: calc(10.5px * var(--fs-scale)); font-weight: 550; }
+.setting-row small { max-width: 600px; margin-top: 4px; color: var(--ink-subtle); font-size: calc(9.3px * var(--fs-scale)); line-height: 1.45; }
 
 /* A select is as wide as its widest option, and the vision engine list carries
    names like "Muse Spark 1.2 Contributor (opencode Go)". Left alone it takes
@@ -1830,7 +1869,7 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   border-bottom: 1px solid var(--line);
   background: var(--surface-1);
   color: var(--ink-faint);
-  font-size: 8.5px;
+  font-size: calc(8.5px * var(--fs-scale));
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1840,7 +1879,7 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   min-height: 53px;
   border-bottom: 1px solid var(--line);
   color: var(--ink-subtle);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--fs-scale));
 }
 
 .context-row:last-child { border-bottom: 0; }
@@ -1862,8 +1901,8 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   max-width: 45%;
   overflow: hidden;
   color: var(--ink-subtle);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9.5px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(9.5px * var(--fs-scale));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1903,8 +1942,8 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 .surface-summary > svg { flex: 0 0 auto; color: var(--accent); }
 .surface-summary strong,
 .surface-summary small { display: block; }
-.surface-summary strong { color: var(--ink-strong); font-size: 10.5px; font-weight: 550; }
-.surface-summary small { margin-top: 4px; color: var(--ink-subtle); font-size: 9.2px; line-height: 1.5; }
+.surface-summary strong { color: var(--ink-strong); font-size: calc(10.5px * var(--fs-scale)); font-weight: 550; }
+.surface-summary small { margin-top: 4px; color: var(--ink-subtle); font-size: calc(9.2px * var(--fs-scale)); line-height: 1.5; }
 
 .theme-picker {
   display: grid;
@@ -1931,8 +1970,8 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 .theme-picker button span { min-width: 0; }
 .theme-picker strong,
 .theme-picker small { display: block; }
-.theme-picker strong { color: var(--ink-strong); font-size: 10px; font-weight: 550; }
-.theme-picker small { margin-top: 3px; color: var(--ink-faint); font-size: 8.5px; }
+.theme-picker strong { color: var(--ink-strong); font-size: calc(10px * var(--fs-scale)); font-weight: 550; }
+.theme-picker small { margin-top: 3px; color: var(--ink-faint); font-size: calc(8.5px * var(--fs-scale)); }
 
 .usage-layout {
   display: grid;
@@ -1957,7 +1996,7 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   background: var(--surface-0);
 }
 
-.range-picker button { min-height: 23px; padding: 2px 7px; font-size: 8.5px; }
+.range-picker button { min-height: 23px; padding: 2px 7px; font-size: calc(8.5px * var(--fs-scale)); }
 
 .usage-chart-wrap {
   position: relative;
@@ -2007,8 +2046,8 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   justify-content: space-between;
   padding-top: 7px;
   color: var(--ink-faint);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 8px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(8px * var(--fs-scale));
 }
 
 .metric-stack {
@@ -2035,11 +2074,11 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   align-items: center;
   gap: 6px;
   color: var(--ink-strong);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
   font-weight: 550;
 }
 
-.metric-card p { margin: 7px 0 0; color: var(--ink-faint); font-size: 8.5px; line-height: 1.4; }
+.metric-card p { margin: 7px 0 0; color: var(--ink-faint); font-size: calc(8.5px * var(--fs-scale)); line-height: 1.4; }
 
 .usage-model-list {
   display: grid;
@@ -2055,10 +2094,10 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 
 .usage-model-list article strong,
 .usage-model-list article small { display: block; }
-.usage-model-list article strong { color: var(--ink-strong); font-size: 9.5px; font-weight: 550; }
-.usage-model-list article small { margin-top: 2px; color: var(--ink-faint); font-size: 8px; }
+.usage-model-list article strong { color: var(--ink-strong); font-size: calc(9.5px * var(--fs-scale)); font-weight: 550; }
+.usage-model-list article small { margin-top: 2px; color: var(--ink-faint); font-size: calc(8px * var(--fs-scale)); }
 .usage-model-list article i { display: block; height: 3px; margin-top: 6px; border-radius: 999px; background: var(--accent); }
-.usage-model-list article p { margin: 4px 0 0; color: var(--ink-faint); font-size: 8px; }
+.usage-model-list article p { margin: 4px 0 0; color: var(--ink-faint); font-size: calc(8px * var(--fs-scale)); }
 
 .provider-usage-grid {
   display: grid;
@@ -2080,11 +2119,11 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 
 .provider-usage-grid button:hover { background: var(--surface-2); }
 .provider-usage-grid button.is-active { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); background: var(--accent-soft); }
-.provider-usage-grid button > span { display: flex; align-items: center; gap: 6px; overflow: hidden; color: var(--ink-subtle); font-size: 8.5px; text-overflow: ellipsis; white-space: nowrap; }
+.provider-usage-grid button > span { display: flex; align-items: center; gap: 6px; overflow: hidden; color: var(--ink-subtle); font-size: calc(8.5px * var(--fs-scale)); text-overflow: ellipsis; white-space: nowrap; }
 .provider-usage-grid button > span i { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: var(--ink-faint); }
 .provider-usage-grid button > span i.status-online { background: var(--success); }
-.provider-usage-grid button > strong { display: block; margin-top: 9px; overflow: hidden; color: var(--ink-strong); font-size: 14px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
-.provider-usage-grid button > small { display: block; margin-top: 3px; overflow: hidden; color: var(--ink-faint); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.provider-usage-grid button > strong { display: block; margin-top: 9px; overflow: hidden; color: var(--ink-strong); font-size: calc(14px * var(--fs-scale)); font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.provider-usage-grid button > small { display: block; margin-top: 3px; overflow: hidden; color: var(--ink-faint); font-size: calc(8px * var(--fs-scale)); text-overflow: ellipsis; white-space: nowrap; }
 
 .status-grid {
   display: grid;
@@ -2107,8 +2146,8 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 .router-state-block > div { min-width: 0; flex: 1; }
 .router-state-block strong,
 .router-state-block small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.router-state-block strong { color: var(--ink-strong); font-size: 11px; font-weight: 560; }
-.router-state-block small { margin-top: 3px; color: var(--ink-faint); font-size: 8.8px; }
+.router-state-block strong { color: var(--ink-strong); font-size: calc(11px * var(--fs-scale)); font-weight: 560; }
+.router-state-block small { margin-top: 3px; color: var(--ink-faint); font-size: calc(8.8px * var(--fs-scale)); }
 
 .status-orb {
   display: grid;
@@ -2164,14 +2203,14 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 .reset-list small { display: block; }
 .live-request-list strong,
 .event-list strong,
-.reset-list strong { color: var(--ink-strong); font-size: 9.5px; font-weight: 540; }
+.reset-list strong { color: var(--ink-strong); font-size: calc(9.5px * var(--fs-scale)); font-weight: 540; }
 .live-request-list small,
 .event-list small,
-.reset-list small { margin-top: 3px; color: var(--ink-faint); font-size: 8px; }
+.reset-list small { margin-top: 3px; color: var(--ink-faint); font-size: calc(8px * var(--fs-scale)); }
 .live-request-list time,
 .event-list > article > span:nth-child(3),
 .event-list time,
-.reset-list time { color: var(--ink-faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 8px; white-space: nowrap; }
+.reset-list time { color: var(--ink-faint); font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: calc(8px * var(--fs-scale)); white-space: nowrap; }
 .event-ok { color: var(--success); }
 .event-fail { color: var(--danger); }
 
@@ -2203,9 +2242,9 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 .doctor-row summary > span { min-width: 0; }
 .doctor-row strong,
 .doctor-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.doctor-row strong { color: var(--ink-strong); font-size: 9.5px; font-weight: 540; }
-.doctor-row small { margin-top: 2px; color: var(--ink-faint); font-size: 8px; }
-.doctor-row > p { margin: 0; padding: 0 10px 10px 32px; color: var(--ink-subtle); font-size: 8.5px; line-height: 1.45; }
+.doctor-row strong { color: var(--ink-strong); font-size: calc(9.5px * var(--fs-scale)); font-weight: 540; }
+.doctor-row small { margin-top: 2px; color: var(--ink-faint); font-size: calc(8px * var(--fs-scale)); }
+.doctor-row > p { margin: 0; padding: 0 10px 10px 32px; color: var(--ink-subtle); font-size: calc(8.5px * var(--fs-scale)); line-height: 1.45; }
 .doctor-ok summary > svg { color: var(--success); }
 .doctor-warn summary > svg { color: var(--warning); }
 .doctor-fail summary > svg { color: var(--danger); }
@@ -2242,17 +2281,17 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   border-radius: 7px;
   background: var(--surface-1);
   color: var(--ink-subtle);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 9px;
+  font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(9px * var(--fs-scale));
   font-weight: 700;
 }
 
 .provider-main { min-width: 0; }
 .provider-title-line { display: flex; min-width: 0; align-items: center; gap: 6px; }
-.provider-title-line > strong { overflow: hidden; color: var(--ink-strong); font-size: 11px; font-weight: 560; text-overflow: ellipsis; white-space: nowrap; }
-.provider-main > small { display: block; margin-top: 3px; color: var(--ink-faint); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 8px; }
-.provider-main > p { margin: 5px 0 0; color: var(--ink-subtle); font-size: 8.7px; line-height: 1.4; }
-.curation-note { display: block; margin-top: 4px; color: var(--warning); font-size: 8px; }
+.provider-title-line > strong { overflow: hidden; color: var(--ink-strong); font-size: calc(11px * var(--fs-scale)); font-weight: 560; text-overflow: ellipsis; white-space: nowrap; }
+.provider-main > small { display: block; margin-top: 3px; color: var(--ink-faint); font-family: "Microsoft YaHei", "Microsoft YaHei UI", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: calc(8px * var(--fs-scale)); }
+.provider-main > p { margin: 5px 0 0; color: var(--ink-subtle); font-size: calc(8.7px * var(--fs-scale)); line-height: 1.4; }
+.curation-note { display: block; margin-top: 4px; color: var(--warning); font-size: calc(8px * var(--fs-scale)); }
 
 .provider-facts {
   display: grid;
@@ -2263,8 +2302,8 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 .provider-facts span { min-width: 0; }
 .provider-facts strong,
 .provider-facts small { display: block; }
-.provider-facts strong { color: var(--ink-strong); font-size: 13px; font-weight: 600; }
-.provider-facts small { margin-top: 3px; color: var(--ink-faint); font-size: 8px; }
+.provider-facts strong { color: var(--ink-strong); font-size: calc(13px * var(--fs-scale)); font-weight: 600; }
+.provider-facts small { margin-top: 3px; color: var(--ink-faint); font-size: calc(8px * var(--fs-scale)); }
 
 .provider-actions-large {
   display: flex;
@@ -2361,10 +2400,10 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   border-bottom: 1px solid var(--line);
 }
 
-.dialog-panel > header h2 { margin: 0; color: var(--ink-strong); font-size: 14px; font-weight: 600; }
-.dialog-panel > header p { margin: 5px 0 0; color: var(--ink-subtle); font-size: 9.5px; line-height: 1.45; }
+.dialog-panel > header h2 { margin: 0; color: var(--ink-strong); font-size: calc(14px * var(--fs-scale)); font-weight: 600; }
+.dialog-panel > header p { margin: 5px 0 0; color: var(--ink-subtle); font-size: calc(9.5px * var(--fs-scale)); line-height: 1.45; }
 .dialog-panel > :not(header) { margin-right: 16px; margin-left: 16px; }
-.dialog-copy { margin-top: 16px; margin-bottom: 16px; color: var(--ink-subtle); font-size: 10.5px; line-height: 1.5; }
+.dialog-copy { margin-top: 16px; margin-bottom: 16px; color: var(--ink-subtle); font-size: calc(10.5px * var(--fs-scale)); line-height: 1.5; }
 .dialog-actions { justify-content: flex-end; margin-top: 15px; margin-bottom: 16px; }
 
 .credential-form {
@@ -2372,7 +2411,7 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 }
 
 .credential-form input { width: 100%; }
-.credential-form > p { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; color: var(--ink-faint); font-size: 8.5px; line-height: 1.4; }
+.credential-form > p { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; color: var(--ink-faint); font-size: calc(8.5px * var(--fs-scale)); line-height: 1.4; }
 .credential-form > p svg { flex: 0 0 auto; }
 
 .credential-warning {
@@ -2387,7 +2426,7 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
 }
 
 .credential-warning svg { flex: 0 0 auto; }
-.credential-warning p { margin: 0; font-size: 9px; line-height: 1.45; }
+.credential-warning p { margin: 0; font-size: calc(9px * var(--fs-scale)); line-height: 1.45; }
 
 .toast {
   position: fixed;
@@ -2405,7 +2444,7 @@ progress::-webkit-progress-value { border-radius: 999px; background: var(--accen
   background: var(--raised);
   box-shadow: 0 14px 38px var(--shadow);
   color: var(--ink);
-  font-size: 10px;
+  font-size: calc(10px * var(--fs-scale));
 }
 
 .spin {
