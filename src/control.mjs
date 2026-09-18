@@ -161,6 +161,7 @@ function targetIsActive(target) {
   const result = spawnSync(process.execPath, [path.join(REPO_ROOT, "src", "service.mjs"), "status"], {
     env: { ...process.env, MODEL_ROUTER_TARGET: target },
     encoding: "utf8",
+    windowsHide: true,
   });
   try {
     const status = JSON.parse(result.stdout);
@@ -187,7 +188,7 @@ function codexConfigSnapshot() {
   const result = spawnSync(
     process.execPath,
     [path.join(REPO_ROOT, "src", "config-manager.mjs"), "status"],
-    { env: { ...process.env, MODEL_ROUTER_TARGET: "codex" }, encoding: "utf8" },
+    { env: { ...process.env, MODEL_ROUTER_TARGET: "codex" }, encoding: "utf8", windowsHide: true },
   );
   if (result.status !== 0) return undefined;
   try {
@@ -585,6 +586,7 @@ function runProbe(target) {
     const child = spawn(process.execPath, [SELF, "--probe"], {
       env: { ...process.env, MODEL_ROUTER_TARGET: target },
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
     let stdout = "";
     let stderr = "";
@@ -680,6 +682,7 @@ function setProviderSelectionForTargets(provider, desired, selected) {
     const result = spawnSync(process.execPath, [SELF, "--probe-set", provider, desired], {
       env: { ...process.env, MODEL_ROUTER_TARGET: target },
       encoding: "utf8",
+      windowsHide: true,
     });
     if (result.status !== 0) {
       throw new Error(`${target}: ${(result.stderr || "").trim() || "toggle failed"}`);
@@ -719,6 +722,7 @@ function refreshActiveTarget(target) {
   const result = spawnSync(command[0], command[1], {
     env: { ...process.env, MODEL_ROUTER_TARGET: target },
     stdio: "inherit",
+    windowsHide: true,
   });
   if (result.status !== 0) throw new Error(`${target}: refresh failed`);
 }
@@ -748,6 +752,7 @@ async function applyProviderSelectionForTargets(selected, { activate = false } =
         cwd: REPO_ROOT,
         env: { ...process.env, MODEL_ROUTER_TARGET: target },
         stdio: "inherit",
+        windowsHide: true,
       });
       if (result.status !== 0) throw new Error(`${target}: apply failed`);
     }
@@ -1184,6 +1189,7 @@ async function setLoginFreeMode(desired) {
         MODEL_ROUTER_LOGIN_FREE: desired === "on" ? "1" : "0",
       },
       encoding: "utf8",
+      windowsHide: true,
     },
   );
   if (catalog.status !== 0) {
@@ -1203,6 +1209,7 @@ async function setLoginFreeMode(desired) {
       cwd: REPO_ROOT,
       env: { ...process.env, MODEL_ROUTER_TARGET: "codex" },
       encoding: "utf8",
+      windowsHide: true,
     },
   );
   if (result.status !== 0) {
@@ -1231,6 +1238,7 @@ async function setSignedRouting(desired) {
       cwd: REPO_ROOT,
       env: { ...process.env, MODEL_ROUTER_TARGET: "codex" },
       encoding: "utf8",
+      windowsHide: true,
     },
   );
   const runCatalog = (routing = desired, { allowTestFault = true } = {}) => {
@@ -1247,6 +1255,7 @@ async function setSignedRouting(desired) {
       cwd: REPO_ROOT,
       env: environment,
       encoding: "utf8",
+      windowsHide: true,
       },
     );
   };
@@ -1331,6 +1340,7 @@ async function setLoginFreeModel(slug) {
       cwd: REPO_ROOT,
       env: { ...process.env, MODEL_ROUTER_TARGET: "codex" },
       encoding: "utf8",
+      windowsHide: true,
     },
   );
   if (result.status !== 0) {
@@ -1368,6 +1378,7 @@ async function setRouterDefault(action, slug) {
       cwd: REPO_ROOT,
       env: { ...process.env, MODEL_ROUTER_TARGET: "codex" },
       encoding: "utf8",
+      windowsHide: true,
     },
   );
   if (result.status !== 0) {
@@ -1391,6 +1402,7 @@ function runDoctor(args) {
       env: { ...process.env, MODEL_ROUTER_TARGET: "codex" },
       stdio: json ? ["inherit", "pipe", "pipe"] : "inherit",
       ...(json ? { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 } : {}),
+      windowsHide: true,
     },
   );
   if (result.error) throw result.error;
@@ -2979,7 +2991,7 @@ function handleService(action) {
   const result = spawnSync(
     process.execPath,
     [path.join(REPO_ROOT, "src", "service.mjs"), value],
-    { stdio: ["inherit", "pipe", "pipe"], env: process.env, encoding: "utf8" },
+    { stdio: ["inherit", "pipe", "pipe"], env: process.env, encoding: "utf8", windowsHide: true },
   );
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -3003,7 +3015,7 @@ function handleTray(action) {
     const plan = spawnSync(
       process.execPath,
       [path.join(REPO_ROOT, "src", "install-plan.mjs"), "tray-plan"],
-      { cwd: REPO_ROOT, env: process.env, encoding: "utf8" },
+      { cwd: REPO_ROOT, env: process.env, encoding: "utf8", windowsHide: true },
     );
     if (plan.error) throw plan.error;
     if (plan.status !== 0) {

@@ -18,6 +18,7 @@ function nodeRunner(script, args) {
     cwd: SOURCE_ROOT,
     env: process.env,
     encoding: "utf8",
+    windowsHide: true,
   });
 }
 

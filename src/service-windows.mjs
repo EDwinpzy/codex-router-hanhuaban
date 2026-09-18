@@ -158,6 +158,7 @@ function schtasks(args, options = {}) {
   }
   return execFileSync("schtasks.exe", args, {
     encoding: "utf8",
+    windowsHide: true,
     stdio: options.quiet ? ["ignore", "ignore", "ignore"] : ["ignore", "pipe", "pipe"],
   });
 }

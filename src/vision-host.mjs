@@ -43,7 +43,10 @@ export function ollamaAvailable({ spawn = spawnSync } = {}) {
 export function pullOllamaModel(model, { spawn = spawnSync } = {}) {
   const command = ollamaCommand({ spawn });
   if (!command) throw new Error(`\`ollama pull ${model}\` failed: ${ollamaInstallMessage()}`);
-  const result = spawn(command, ["pull", model], { stdio: "inherit" });
+  // The vision-bridge setup runs from the Control Center, which has no
+  // console. Inherited stdio still reaches the caller through its pipes, but
+  // without `windowsHide` Windows allocates a console window for the pull.
+  const result = spawn(command, ["pull", model], { stdio: "inherit", windowsHide: true });
   if (result.status !== 0) {
     throw new Error(`\`ollama pull ${model}\` failed (exit ${result.status ?? "unknown"}).`);
   }

@@ -523,7 +523,7 @@ function loginFreeConfigured() {
     const result = spawnSync(
       process.execPath,
       [fileURLToPath(new URL("./config-manager.mjs", import.meta.url)), "status"],
-      { encoding: "utf8", env: process.env },
+      { encoding: "utf8", env: process.env, windowsHide: true },
     );
     if (result.status !== 0) {
       throw new Error(

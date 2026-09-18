@@ -131,7 +131,7 @@ function commandDetail(result, fallback) {
 
 export function runNodeCommand(script, args = []) {
   const result = spawnSync(process.execPath, [path.join(ROOT, script), ...args], {
-    cwd: ROOT, env: process.env, encoding: "utf8", maxBuffer: 32 * 1024 * 1024,
+    cwd: ROOT, env: process.env, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, windowsHide: true,
   });
   if (result.error || result.status !== 0) throw new Error(commandDetail(result, `${script} failed.`));
   return String(result.stdout || "");

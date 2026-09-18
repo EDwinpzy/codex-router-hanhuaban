@@ -35,7 +35,7 @@ export function removeLocalModelFromDisk(
     command = ollamaCommand() || "ollama",
   } = {},
 ) {
-  const result = spawn(command, ["rm", tag], { encoding: "utf8" });
+  const result = spawn(command, ["rm", tag], { encoding: "utf8", windowsHide: true });
   if (result?.error) throw result.error;
   if (result?.status !== 0) {
     const detail = String(result?.stderr || "").trim();
