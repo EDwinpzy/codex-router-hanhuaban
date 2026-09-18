@@ -1514,7 +1514,7 @@ export const ZH_RULES = [
   // 额度卡片的 aria-label：「<来源>, <窗口>, 100% left. No reset reported」
   { pattern: /^(.+?),\s*(.+? limit),\s*(.+? left)\.\s*(No reset reported|Resets .+)$/,
     replace: (m) => `${pickZh(m[1])}，${pickZh(m[2])}，${pickZh(m[3])}。${pickZh(m[4])}` },
-  { pattern: /^(.+?),\s*(Plan credits),\s*(.+?)\.\s*(No reset reported|Resets .+)$/,
+  { pattern: /^(.+?),\s*(Extra credits),\s*(.+?)\.\s*(No reset reported|Resets .+)$/,
     replace: (m) => `${pickZh(m[1])}，${pickZh(m[2])}，${pickZh(m[3])}。${pickZh(m[4])}` },
   // 服务商归属 tooltip：「<服务商> — <流量口径> — 74% left · Rolling limit」
   { pattern: /^(.+?)\s+—\s+(.+?)\s+—\s+(.+)$/,
@@ -1760,10 +1760,10 @@ const D12 = {
     "Muse Spark 贡献者免费模型无需 API 密钥。这条内部 Responses 路由只接受文档中列出的免费模型。请自行承担风险：该访问是公开的例外而非法定权益，限额可能随时变化。",
 
   // —— 路由服务返回的配额窗口与额度名称（src/provider-account-usage.mjs）——
-  "Rolling limit": "滚动窗口",
+  // 三个窗口统一叫法：5 小时 / 每周 / 每月，排序也按这个顺序。
   "Monthly limit": "每月上限",
   "Daily limit": "每日上限",
-  "Plan credits": "套餐额度",
+  "Extra credits": "额外额度",
   "Credit balance": "额度余额",
   "Prepaid credits": "预付额度",
   "Pay-as-you-go": "按量计费",
@@ -1988,4 +1988,3 @@ const D12 = {
 };
 
 export const ZH_EXACT = Object.assign({}, D1, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12);
-

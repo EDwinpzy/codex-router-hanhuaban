@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type Ref } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
   BarChart3,
-  Coins,
-  Gauge,
 } from "lucide-react";
-import { Badge, Button, EmptyState, PageHeader, PanelSkeleton, SectionHeading, SkeletonBlock } from "../components";
+import { Badge, EmptyState, PageHeader, SectionHeading, SkeletonBlock } from "../components";
+import {
+  AccountAllowanceList,
+  buildAccountAllowanceCards,
+  metricResetAt,
+} from "./account-allowances";
 import {
   accountBucketsWithRouterFallback,
   bucketRange,
@@ -14,7 +17,6 @@ import {
   exactNumber,
   formatDateTime,
   metricValue,
-  remainingPercent,
   type AccountBucketSource,
 } from "../lib";
 import type {
@@ -70,6 +72,7 @@ interface UsageSource {
   streakDays?: number | null;
   scopeLabel?: string;
   windowStart?: string | null;
+  lastUsedAt?: string | null;
 }
 
 // The status snapshot keeps a bounded 90-day view for fast rolling counters and
@@ -78,10 +81,18 @@ interface UsageSource {
 // narrows the daily chart without changing the headline's all-retained scope.
 const LEDGER_DAYS = 90;
 
-interface AllowanceRow {
-  id: string;
-  source: UsageSource;
-  metric: UsageMetric;
+// The last request this router measured for a provider, taken from its
+// per-model counters. Every provider entry carries them, so the account someone
+// was just working in can be listed first.
+function latestModelUse(models: ProviderUsage["models"]): string | null {
+  let latest: string | null = null;
+  for (const model of models ?? []) {
+    const at = model.lastUsedAt;
+    if (typeof at !== "string" || !at) continue;
+    // Timestamps are ISO instants from one clock, so they compare as written.
+    if (!latest || at > latest) latest = at;
+  }
+  return latest;
 }
 
 export function UsagePage({
@@ -110,7 +121,7 @@ export function UsagePage({
   const [allowanceFocused, setAllowanceFocused] = useState(false);
   const pageRef = useRef<HTMLDivElement>(null);
   const allowanceRef = useRef<HTMLElement>(null);
-  const allowanceTargetRef = useRef<HTMLElement>(null);
+  const allowanceTargetRef = useRef<HTMLDivElement>(null);
   const handledFocusRequest = useRef<number | undefined>(undefined);
 
   const sources = useMemo(
@@ -157,33 +168,31 @@ export function UsagePage({
     ? buckets.filter((bucket) => bucket.displaySource === "router-fallback").length
     : 0;
 
-  const allowances = useMemo<AllowanceRow[]>(() => {
-    if (!source) return [];
-    const candidates = [
-      ...sources.filter((entry) => entry.id === source.id && entry.kind !== "aggregate"),
-      ...sources.filter((entry) => entry.id !== source.id && entry.kind !== "aggregate"),
-    ];
-    return candidates.flatMap((entry) =>
-      entry.metrics.map((metric, index) => ({
-        id: `${entry.id}-${metric.label || metric.kind}-${index}`,
-        source: entry,
-        metric,
-      })),
-    );
-  }, [source, sources]);
+  // The card list, its ordering and its row formatting live in
+  // ./account-allowances so the Dashboard can show the same thing above its
+  // traffic panel without a second implementation.
+  const allowanceCards = useMemo(
+    () => buildAccountAllowanceCards(sources, source?.id),
+    [source?.id, sources],
+  );
 
   const targetAllowanceSourceId = focusRequest?.allowance
     ? navigationSourceId(focusRequest.sourceId)
     : undefined;
   const targetAllowanceRows = targetAllowanceSourceId
-    ? allowances.filter((row) => row.source.id === targetAllowanceSourceId)
+    ? allowanceCards
+        .filter((card) => card.id === targetAllowanceSourceId)
+        .flatMap((card) => [...card.windows, ...card.balances])
     : [];
+  // The window that refills soonest is the one a user navigating from the
+  // dashboard wants to see, so focus lands on that row rather than the card.
   const targetAllowanceRowId = (
     targetAllowanceRows
       .filter((row) => metricResetAt(row.metric) !== undefined)
       .sort((left, right) => metricResetAt(left.metric)! - metricResetAt(right.metric)!)[0]
     ?? targetAllowanceRows[0]
   )?.id;
+  const targetAllowanceCardId = targetAllowanceRows.length ? targetAllowanceSourceId : undefined;
 
   useEffect(() => {
     if (!focusRequest) return undefined;
@@ -226,21 +235,13 @@ export function UsagePage({
       if (focusAllowance()) handledFocusRequest.current = focusRequest.id;
     }, 80);
     return () => window.clearTimeout(scrollTimer);
-  }, [allowances.length, focusRequest, refreshing, sources, targetAllowanceRowId]);
+  }, [allowanceCards.length, focusRequest, refreshing, sources, targetAllowanceRowId]);
 
   useEffect(() => {
     if (!allowanceFocused) return undefined;
     const clearTimer = window.setTimeout(() => setAllowanceFocused(false), 1_800);
     return () => window.clearTimeout(clearTimer);
   }, [allowanceFocused, focusRequest?.id]);
-
-  const dashboardSources = useMemo(() => {
-    const candidates = sources.filter((entry) => entry.kind !== "aggregate");
-    return candidates.filter((entry, index, all) =>
-      Boolean(entry.dashboardUrl)
-      && all.findIndex((candidate) => candidate.dashboardUrl === entry.dashboardUrl) === index,
-    );
-  }, [source, sources]);
 
   return (
     <div ref={pageRef} tabIndex={-1} aria-label="Usage overview" className="usage-status-page usage-page">
@@ -348,45 +349,16 @@ export function UsagePage({
                 title="Accounts and allowances"
                 description="Official quota windows and balances for every connected account."
               />
-              {allowances.length ? (
-                <div className="us-metric-stack">
-                  {allowances.map((row) => (
-                    <MetricCard
-                      key={row.id}
-                      source={row.source.name}
-                      metric={row.metric}
-                      cardRef={row.id === targetAllowanceRowId ? allowanceTargetRef : undefined}
-                      navigationFocused={allowanceFocused && row.id === targetAllowanceRowId}
-                    />
-                  ))}
-                  {!dataReady.accountUsage || !dataReady.providerUsage ? (
-                    <SkeletonBlock className="us-loading-metric" />
-                  ) : null}
-                </div>
-              ) : !dataReady.accountUsage || !dataReady.providerUsage ? (
-                <PanelSkeleton label="Loading account allowances" count={2} />
-              ) : (
-                <EmptyState
-                  icon={<Gauge size={20} />}
-                  title="No account meter available"
-                  body={source.message || "Local traffic remains available without estimating a quota."}
-                />
-              )}
-              {dashboardSources.length ? (
-                <div className="us-dashboard-links">
-                  {dashboardSources.map((entry) => (
-                    <Button
-                      key={entry.id}
-                      variant="ghost"
-                      disabled={!api}
-                      onClick={() => api && void api.openExternal(entry.dashboardUrl!)}
-                    >
-                      {entry.name} dashboard
-                      <ArrowUpRight aria-hidden size={13} strokeWidth={1.7} />
-                    </Button>
-                  ))}
-                </div>
-              ) : null}
+              <AccountAllowanceList
+                cards={allowanceCards}
+                api={api}
+                pending={!dataReady.accountUsage || !dataReady.providerUsage}
+                emptyBody={source.message}
+                focusedCardId={allowanceFocused ? targetAllowanceCardId : undefined}
+                focusedRowId={allowanceFocused ? targetAllowanceRowId : undefined}
+                rowRefId={targetAllowanceRowId}
+                rowRef={allowanceTargetRef}
+              />
             </section>
           </div>
 
@@ -437,7 +409,9 @@ export function UsagePage({
   );
 }
 
-function buildSources(
+// Exported so the Dashboard can build the same per-account source list for the
+// allowance cards it repeats above its traffic panel.
+export function buildSources(
   t: Translate,
   target?: RouterTarget,
   account?: AccountUsage,
@@ -531,6 +505,7 @@ function buildSources(
       plan: providerAccount?.plan,
       scopeLabel: retainedScopeLabel,
       windowStart: retainedFrom,
+      lastUsedAt: latestModelUse(provider.models),
     });
   }
 
@@ -591,6 +566,9 @@ function buildSources(
 
   if (account) {
     const localOpenAiBuckets = providerSources.find((entry) => entry.id === "provider:openai")?.buckets ?? [];
+    // Account usage is the same traffic the router measured for OpenAI, so the
+    // account card shares that provider's recency.
+    const openAiLastUsed = providerSources.find((entry) => entry.id === "provider:openai")?.lastUsedAt ?? null;
     const accountBuckets = accountBucketsWithRouterFallback(
       account.dailyUsageBuckets ?? [],
       localOpenAiBuckets,
@@ -635,6 +613,8 @@ function buildSources(
       lifetimeTokens: account.summary?.lifetimeTokens ?? null,
       peakDailyTokens: account.summary?.peakDailyTokens ?? null,
       streakDays: account.summary?.currentStreakDays ?? null,
+      lastUsedAt: openAiLastUsed,
+      dashboardUrl: account.dashboardUrl,
     });
   }
 
@@ -1119,78 +1099,15 @@ function ChartTooltip({ bucket, parts, sourceKind, t }: {
   );
 }
 
-function MetricCard({ source, metric, cardRef, navigationFocused = false }: {
-  source: string;
-  metric: UsageMetric;
-  cardRef?: Ref<HTMLElement>;
-  navigationFocused?: boolean;
-}) {
-  const remaining = remainingPercent(metric);
-  const tone = remaining !== null && remaining < 15
-    ? "danger"
-    : remaining !== null && remaining < 35
-      ? "warning"
-      : "neutral";
-  const reset = metricResetAt(metric);
-  const label = metric.label || (metric.kind === "balance" ? "Balance" : "Usage limit");
-  const resetLabel = reset !== undefined
-    ? `Resets ${formatDateTime(reset)} (${resetCountdown(reset)})`
-    : "No reset reported";
-  return (
-    <article
-      ref={cardRef}
-      tabIndex={cardRef ? -1 : undefined}
-      aria-label={`${source}, ${label}, ${metricValue(metric)}. ${resetLabel}`}
-      className={`us-metric-card${navigationFocused ? " is-navigation-focus" : ""}`}
-    >
-      <header>
-        <span className="us-metric-source">{source}</span>
-        <Badge tone={tone}>{metricValue(metric)}</Badge>
-      </header>
-      <div className="us-metric-title">
-        {metric.kind === "balance"
-          ? <Coins aria-hidden size={15} strokeWidth={1.7} />
-          : <Gauge aria-hidden size={15} strokeWidth={1.7} />}
-        <strong>{label}</strong>
-      </div>
-      {remaining !== null ? (
-        <progress
-          className={`us-quota-progress tone-${tone}`}
-          max="100"
-          value={remaining}
-          aria-label={`${metric.label || "Quota"}: ${Math.round(remaining)} percent remaining`}
-        />
-      ) : null}
-      {metric.kind !== "balance" && hasMetricCounts(metric) ? (
-        <dl className="us-metric-facts">
-          <div><dt>Used</dt><dd>{formatMetricCount(metric.used, metric.unit)}</dd></div>
-          <div><dt>Remaining</dt><dd>{formatMetricCount(metric.remaining, metric.unit)}</dd></div>
-          <div><dt>Limit</dt><dd>{formatMetricCount(metric.limit, metric.unit)}</dd></div>
-        </dl>
-      ) : null}
-      {metric.detail ? <p>{metric.detail}</p> : null}
-      <footer>
-        {reset !== undefined ? (
-          <time dateTime={dateTimeValue(reset)}>
-            {resetLabel}
-          </time>
-        ) : "No reset reported"}
-      </footer>
-    </article>
-  );
-}
-
+// One window inside an account card. Every window carries its own percentage,
+// bar, counts and reset line, so two accounts can be compared row by row
+// without reading around a plan name.
 function navigationSourceId(sourceId?: string): string | undefined {
   if (!sourceId) return undefined;
   // The menu-bar/widget Codex source is the account-reported stream used for
   // its graph and reset windows, not the separate traffic ledger observed by
   // this router.
   return sourceId === "openai" ? "chatgpt-subscription" : `provider:${sourceId}`;
-}
-
-function metricResetAt(metric: UsageMetric): number | undefined {
-  const reset = metric.resetAt ?? metric.resetsAt;
-  return Number.isFinite(reset) ? reset : undefined;
 }
 
 function SourceRow({ source, selected, onSelect, t }: {
@@ -1409,38 +1326,4 @@ function formatBucketDate(value?: string): string {
   const date = new Date(`${value}T12:00:00`);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(date);
-}
-
-function hasMetricCounts(metric: UsageMetric): boolean {
-  return [metric.used, metric.remaining, metric.limit].some((value) => Number.isFinite(Number(value)));
-}
-
-function formatMetricCount(value: number | undefined, unit?: string): string {
-  if (!Number.isFinite(Number(value))) return "Not reported";
-  const formatted = exactNumber(value);
-  return unit ? `${formatted} ${unit}` : formatted;
-}
-
-function resetCountdown(value: number | string): string {
-  const numeric = Number(value);
-  const timestamp = Number.isFinite(numeric)
-    ? (numeric < 10_000_000_000 ? numeric * 1_000 : numeric)
-    : new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) return "time unavailable";
-  const remaining = timestamp - Date.now();
-  if (remaining <= 0) return "refresh due";
-  const minutes = Math.ceil(remaining / 60_000);
-  if (minutes < 60) return `in ${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `in ${hours}h ${minutes % 60}m`;
-  const days = Math.floor(hours / 24);
-  return `in ${days}d ${hours % 24}h`;
-}
-
-function dateTimeValue(value: number | string): string {
-  const numeric = Number(value);
-  const date = Number.isFinite(numeric)
-    ? new Date(numeric < 10_000_000_000 ? numeric * 1_000 : numeric)
-    : new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }

@@ -37,6 +37,7 @@ const bridgeSource = String.raw`
   const staleProviderUsage = searchParams.get("staleProviderUsage") === "1";
   const routeTestFails = searchParams.get("routeTestFails") === "1";
   const fallbackUsage = searchParams.get("fallbackUsage") === "1";
+  const unavailableProvider = searchParams.get("unavailableProvider") === "1";
   const pollOnceMs = Number(searchParams.get("pollOnceMs")) || 0;
   const healthPollOnceMs = Number(searchParams.get("healthPollOnceMs")) || 0;
   const staleHealth = searchParams.get("staleHealth") === "1";
@@ -400,6 +401,25 @@ const bridgeSource = String.raw`
               outputTokens: 6_000,
             }],
           }] : []),
+          // A connected provider whose own usage API failed. The router reports
+          // it as "unavailable" with no metrics, which used to delete the
+          // account's card and collapse the allowance row to two columns.
+          ...(unavailableProvider ? [{
+            id: "opencode-go",
+            displayName: "opencode Go/Zen",
+            credentialType: "api",
+            totalTokens: 5_000,
+            requests: 4,
+            last24hTokens: 5_000,
+            last24hRequests: 4,
+            dailyUsageBuckets: [{ startDate: "2026-08-27", tokens: 5_000, requests: 4 }],
+            account: {
+              status: "unavailable",
+              source: "official-api",
+              metrics: [],
+              message: "HTTP 503",
+            },
+          }] : []),
           {
             id: "deepseek",
             displayName: "DeepSeek",
@@ -588,6 +608,18 @@ async function newEnglishTestPage(browser, options) {
   return page;
 }
 
+// Card counts settle after the fixture's usage reads resolve, so poll for the
+// expected number instead of racing a single count.
+async function countEventually(locator, expected, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  let count = await locator.count();
+  while (count !== expected && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    count = await locator.count();
+  }
+  return count;
+}
+
 test("the production renderer exposes model discovery and picker actions", { timeout: 120_000 }, async () => {
   assert.equal(existsSync(path.join(dist, "index.html")), true, "npm test must build the renderer first");
   assert.ok(chromiumPath, "No Chromium executable is available for the Control Center renderer test.");
@@ -628,7 +660,7 @@ test("the production renderer exposes model discovery and picker actions", { tim
     );
     await page.waitForFunction(() => {
       const active = document.activeElement;
-      return active?.classList.contains("us-metric-card")
+      return active?.classList.contains("us-quota-row")
         && active.getAttribute("aria-label")?.startsWith("DeepSeek, Rolling window");
     });
     assert.match(
@@ -1080,6 +1112,65 @@ test("the production renderer exposes model discovery and picker actions", { tim
     );
     assert.deepEqual(corruptPoolErrors, []);
     await corruptPoolPage.close();
+    assert.deepEqual(pageErrors, [], `renderer errors: ${pageErrors.join("; ")}`);
+  } finally {
+    await browser.close();
+    await close();
+  }
+});
+
+// The allowance row is three columns wide because three accounts are
+// connected. A provider whose own usage API fails must keep its card, or the
+// row silently collapses to two columns and reads as an account that
+// disappeared rather than as a request that failed.
+test("a failed account usage report keeps the account's allowance card", { timeout: 120_000 }, async () => {
+  assert.equal(existsSync(path.join(dist, "index.html")), true, "npm test must build the renderer first");
+  assert.ok(chromiumPath, "No Chromium executable is available for the Control Center renderer test.");
+
+  const { url, close } = await serveRenderer();
+  const browser = await chromium.launch({
+    executablePath: chromiumPath,
+    headless: true,
+    args: process.platform === "linux" ? ["--no-sandbox"] : [],
+  });
+  const pageErrors = [];
+  try {
+    const page = await newEnglishTestPage(browser, { viewport: { width: 1280, height: 900 } });
+    page.setDefaultTimeout(10_000);
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") pageErrors.push(message.text());
+    });
+
+    await page.goto(`${url}?unavailableProvider=1`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("navigation", { name: "Control center sections" }).waitFor();
+    const panel = page.locator(".us-allowance-panel");
+    await panel.waitFor();
+    const cards = panel.locator(".us-provider-card");
+    // ChatGPT (subscription), DeepSeek, and the failing opencode Go/Zen.
+    assert.equal(
+      await countEventually(cards, 3),
+      3,
+      "a failing account report must not remove its card from the row",
+    );
+    const failing = cards.filter({ hasText: "opencode Go/Zen" });
+    assert.equal(await failing.count(), 1, "the failing account keeps its own card");
+    assert.match(await failing.innerText(), /Usage unavailable/);
+    assert.match(await failing.innerText(), /HTTP 503/);
+    assert.match(await failing.innerText(), /Router traffic for the last 24 hours: 5k tokens/);
+    const healthy = cards.filter({ hasText: "DeepSeek" });
+    assert.match(await healthy.innerText(), /Rolling window/);
+    assert.doesNotMatch(await healthy.innerText(), /Usage unavailable/);
+    // The row is one line of equal columns, so a failing account cannot shrink
+    // or reflow the grid the other two cards are laid out in.
+    const boxes = await cards.evaluateAll((nodes) => nodes.map((node) => {
+      const rect = node.getBoundingClientRect();
+      return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width) };
+    }));
+    assert.equal(new Set(boxes.map((box) => box.y)).size, 1, "all three accounts share one row");
+    assert.equal(new Set(boxes.map((box) => box.width)).size, 1, "every account column is the same width");
+    assert.deepEqual([...boxes].sort((left, right) => left.x - right.x).map((box) => box.x),
+      [...boxes].map((box) => box.x).sort((left, right) => left - right));
     assert.deepEqual(pageErrors, [], `renderer errors: ${pageErrors.join("; ")}`);
   } finally {
     await browser.close();

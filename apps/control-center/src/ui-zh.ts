@@ -587,6 +587,7 @@ const D3: Record<string, string> = {
   "Anyway": "仍然继续",
   "Apply": "应用",
   "Auto": "自动",
+  "Auto-retry": "自动重试",
   "Back": "返回",
   "Checking": "检查中",
   "Clear": "清除",
@@ -647,6 +648,7 @@ const D3: Record<string, string> = {
   "No": "否",
   "The electron bridge is unavailable. Open this UI through the Codex Router desktop app.":
     "Electron 桥接不可用。请通过 Codex Router 桌面应用打开此界面。",
+  "The account usage report failed.": "账户用量读取失败。",
   "The aggregate is not reported because at least one provider is missing a counter.":
     "由于至少有一个服务商缺少计数器，无法上报汇总值。",
   "The chart will fill as a request passes through the local router.":
@@ -1330,6 +1332,7 @@ const ZH_RULES: Rule[] = [
   { pattern: /^([\d.,]+[kmb]?%?)\s*reused tokens$/, replace: (m) => `${m[1]} 个复用 token` },
   { pattern: /^([\d.,]+[kmb]?)\s*total tokens$/, replace: (m) => `${m[1]} 个 token（合计）` },
   { pattern: /^([\d.,]+[kmb]?)\s*router tokens?$/, replace: (m) => `${m[1]} 路由器 token` },
+  { pattern: /^Router traffic for the last 24 hours: (.+) tokens$/, replace: (m) => `过去 24 小时的路由器流量：${m[1]} token` },
   { pattern: /^([\d.,]+[kmb]?)\s*(input|output|cache|cached|context|active|cloud|requests?)(\.?)$/,
     replace: (m) => `${m[1]} ${pickZh(m[2])}${m[3]}` },
   { pattern: /^read (.+)$/, replace: (m) => `读取于 ${m[1]}` },
@@ -1520,7 +1523,7 @@ const ZH_RULES: Rule[] = [
   // 额度卡片的 aria-label：「<来源>, <窗口>, 100% left. No reset reported」
   { pattern: /^(.+?),\s*(.+? limit),\s*(.+? left)\.\s*(No reset reported|Resets .+)$/,
     replace: (m) => `${pickZh(m[1])}，${pickZh(m[2])}，${pickZh(m[3])}。${pickZh(m[4])}` },
-  { pattern: /^(.+?),\s*(Plan credits),\s*(.+?)\.\s*(No reset reported|Resets .+)$/,
+  { pattern: /^(.+?),\s*(Extra credits),\s*(.+?)\.\s*(No reset reported|Resets .+)$/,
     replace: (m) => `${pickZh(m[1])}，${pickZh(m[2])}，${pickZh(m[3])}。${pickZh(m[4])}` },
   // 服务商归属 tooltip：「<服务商> — <流量口径> — 74% left · Rolling limit」
   { pattern: /^(.+?)\s+—\s+(.+?)\s+—\s+(.+)$/,
@@ -1766,10 +1769,10 @@ const D12: Record<string, string> = {
     "Muse Spark 贡献者免费模型无需 API 密钥。这条内部 Responses 路由只接受文档中列出的免费模型。请自行承担风险：该访问是公开的例外而非法定权益，限额可能随时变化。",
 
   // —— 路由服务返回的配额窗口与额度名称（src/provider-account-usage.mjs）——
-  "Rolling limit": "滚动窗口",
+  // 三个窗口统一叫法：5 小时 / 每周 / 每月，排序也按这个顺序。
   "Monthly limit": "每月上限",
   "Daily limit": "每日上限",
-  "Plan credits": "套餐额度",
+  "Extra credits": "额外额度",
   "Credit balance": "额度余额",
   "Prepaid credits": "预付额度",
   "Pay-as-you-go": "按量计费",

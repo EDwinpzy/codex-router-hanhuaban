@@ -13,6 +13,9 @@ import { Badge, Button, EmptyState, InlineNotice, PageHeader, PanelSkeleton, Sec
 import { ProviderLogo } from "../provider-branding";
 import { ServiceHealthPanel } from "../ServiceHealth";
 import { useOptimisticValues, type RunAction } from "../useOptimisticValues";
+import { AccountAllowanceList, buildAccountAllowanceCards } from "./account-allowances";
+import { buildSources } from "./UsagePage";
+import type { Translate } from "../i18n";
 import {
   classNames,
   compactNumber,
@@ -40,6 +43,7 @@ import type {
   ModelViewFocus,
 } from "../types";
 import "./dashboard.css";
+import "./usage-status.css";
 
 type Tone = "success" | "warning" | "danger" | "accent";
 
@@ -139,6 +143,7 @@ export function DashboardPage({
   onRefresh,
   onNavigate,
   runAction,
+  t,
 }: {
   target?: RouterTarget;
   dashboard?: RouterDashboardSnapshot;
@@ -153,6 +158,7 @@ export function DashboardPage({
   dataReady: RouterDataReady;
   onRefresh: () => void;
   onNavigate: (view: ViewId, modelFocus?: ModelViewFocus) => void;
+  t: Translate;
 }) {
   const [trafficRange, setTrafficRange] = useState<TrafficRange>(24);
   const healthPending = !dataReady.health && !health;
@@ -246,6 +252,18 @@ export function DashboardPage({
   const modelBreakdown = buildModelBreakdown(providerUsage, events, Date.now());
   const trafficHasRequests = trafficBuckets.some((bucket) => bucket.requests > 0);
   const trafficHasTokens = trafficBuckets.some((bucket) => bucket.measuredTokens);
+
+  // The Usage page owns the per-account allowance cards; the Overview repeats
+  // them above the traffic panel, so it builds the same source list and card
+  // list instead of rendering the same router facts a second way.
+  const allowanceSources = useMemo(
+    () => buildSources(t, target, account, providerUsage),
+    [account, providerUsage, t, target],
+  );
+  const allowanceCards = useMemo(
+    () => buildAccountAllowanceCards(allowanceSources),
+    [allowanceSources],
+  );
 
   const tiles: SummaryTile[] = [
     {
@@ -378,6 +396,24 @@ export function DashboardPage({
             </button>
           );
         })}
+      </div>
+
+      {/* This is the Usage page's allowance section, moved above the traffic
+          grid. `usage-status.css` scopes every `us-` rule under the Usage
+          page's own root classes, so the moved copy is carried inside that same
+          scope and inherits the styles as written, rather than restating them. */}
+      <div className="usage-status-page usage-page">
+        <section aria-label="Accounts and allowances" className="panel-section us-allowance-panel">
+          <SectionHeading
+            title="Accounts and allowances"
+            description="Official quota windows and balances for every connected account."
+          />
+          <AccountAllowanceList
+            cards={allowanceCards}
+            api={api}
+            pending={!dataReady.accountUsage || !dataReady.providerUsage}
+          />
+        </section>
       </div>
 
       <div className="db-traffic-grid">

@@ -10,15 +10,36 @@ import {
 import { kimiOAuthStatus } from "./oauth-status.mjs";
 import { PROVIDERS } from "./model-registry.mjs";
 import { resolveProviderCredential } from "./provider-credentials.mjs";
+import { observeCreditPool } from "./provider-credit-cycles.mjs";
 import {
   OPENCODE_SESSION_FALLBACKS,
   openCodeSessionHeaders,
 } from "./opencode-session.mjs";
 import { cooldownUntil } from "./rate-limit-headers.mjs";
 import { rateLimitSnapshotFor } from "./rate-limit-state.mjs";
+import { readCachedUsage, rememberUsage } from "./provider-usage-cache.mjs";
 import { VERSION } from "./version.mjs";
 
 const REQUEST_TIMEOUT_MS = 8_000;
+
+// opencode's usage route is served by their own aggregation backend and
+// refuses in bursts of minutes, so this route alone is retried and keeps its
+// last good reading. Both are scoped to it on evidence, not by taste: ten of
+// twelve consecutive probes answered `503 Go usage is unavailable` during one
+// measured burst, and seven of eight succeeded minutes later. No other route
+// here has been seen failing that way, and every other provider that can fail
+// transiently already degrades through `withHeaderQuota` or its own fallback
+// rather than throwing.
+//
+// The budget has to fit inside the Control Center's 20s `account` read, and a
+// snapshot waits on its slowest provider rather than on the sum of them, so
+// these three attempts are the whole worst case for this route: 3 x 4s of
+// waiting plus the two gaps, 12.7s. The per-attempt window is shorter than the
+// shared 8s because a healthy answer here has been observed inside 2.2s and an
+// attempt that has not answered by 4s is the failure this retries.
+const OPENCODE_USAGE_ATTEMPTS = 3;
+const OPENCODE_USAGE_TIMEOUT_MS = 4_000;
+const OPENCODE_USAGE_RETRY_DELAY_MS = 350;
 
 function numberValue(value) {
   const number = Number(value);
@@ -255,9 +276,10 @@ export function minimaxQuotaMetrics(payload) {
   ].filter(Boolean);
 }
 
-// opencode Zen reports Go-plan windows as used percentages. The rolling
-// window's duration is not part of the payload, so its label stays generic
-// instead of claiming a specific span.
+// opencode Zen reports Go-plan windows as used percentages. The payload calls
+// the short one "rolling" and never states its span, so this name comes from
+// the plan rather than from the response: listed as the 5-hour window, every
+// account's three windows line up under one set of names.
 export function opencodeGoUsageMetrics(payload) {
   const usage = payload?.usage;
   if (!usage || typeof usage !== "object") return [];
@@ -280,7 +302,7 @@ export function opencodeGoUsageMetrics(payload) {
     return metric;
   };
   return [
-    windowMetric("Rolling limit", usage.rolling),
+    windowMetric("5-hour limit", usage.rolling),
     windowMetric("Weekly limit", usage.weekly),
     windowMetric("Monthly limit", usage.monthly),
   ].filter(Boolean);
@@ -288,7 +310,7 @@ export function opencodeGoUsageMetrics(payload) {
 
 // Command Code's billing API reports plan windows as used/cap credit
 // counters; resetAt is an epoch that stays 0 until the window first opens.
-export function commandCodeCreditsMetrics(payload) {
+export function commandCodeCreditsMetrics(payload, { monthlyGrant } = {}) {
   const windows = payload?.windowLimits;
   if (!windows || typeof windows !== "object") return [];
   const windowMetric = (label, detail) => {
@@ -307,33 +329,46 @@ export function commandCodeCreditsMetrics(payload) {
       "credits",
     );
   };
-  // The window caps say how fast the plan may be spent; the credit pool says
+  // The window caps say how fast the plan may be spent; the monthly pool says
   // how much is left to spend at all. A coding plan runs out of the second one
-  // long before it stops hitting the first, so reporting only the windows
-  // hides the number that actually ends someone's afternoon.
+  // long before it stops hitting the first, so the pool is the number that
+  // actually ends someone's afternoon.
+  //
+  // The pool arrives as a remaining amount with no cap beside it, so its total
+  // is the one this cycle opened with (`provider-credit-cycles.mjs`) and the
+  // used figure is what has left it since. Reporting it as a window is what
+  // makes it comparable with the two above it.
   const credits = payload?.credits;
   const monthly = numberValue(credits?.monthlyCredits);
+  const grant = numberValue(monthlyGrant);
+  const monthlyMetric = Number.isFinite(monthly) && Number.isFinite(grant) && grant > 0
+    ? quotaMetric("Monthly limit", { limit: grant, remaining: monthly }, "USD")
+    : undefined;
+  // Credits bought or granted on top of the plan live beside the monthly pool
+  // rather than inside it, so a top-up never moves the monthly percentage.
   const purchased = numberValue(credits?.purchasedCredits);
   const free = numberValue(credits?.freeCredits);
-  const total = [monthly, purchased, free].filter(Number.isFinite).reduce((sum, part) => sum + part, 0);
-  const balance = Number.isFinite(monthly)
-    ? [{
+  const extra = [purchased, free]
+    .filter((part) => Number.isFinite(part) && part > 0)
+    .reduce((sum, part) => sum + part, 0);
+  const extraMetric = extra > 0
+    ? {
         kind: "balance",
-        label: "Plan credits",
-        value: total,
+        label: "Extra credits",
+        value: extra,
         currency: "USD",
         detail: [
-          Number.isFinite(monthly) ? `Plan ${monthly.toFixed(2)}` : undefined,
           Number.isFinite(purchased) && purchased > 0 ? `Purchased ${purchased.toFixed(2)}` : undefined,
           Number.isFinite(free) && free > 0 ? `Free ${free.toFixed(2)}` : undefined,
         ].filter(Boolean).join(" · "),
         available: credits?.belowThreshold !== true,
-      }]
-    : [];
+      }
+    : undefined;
   return [
-    ...balance,
     windowMetric("5-hour limit", windows.fiveHour),
     windowMetric("Weekly limit", windows.weekly),
+    monthlyMetric,
+    extraMetric,
   ].filter(Boolean);
 }
 
@@ -449,7 +484,7 @@ export function githubCopilotQuotaMetrics(payload) {
   return metrics;
 }
 
-async function requestJson(url, key, headers = {}, fetchImpl = fetch) {
+async function requestJson(url, key, headers = {}, fetchImpl = fetch, { timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   const response = await fetchImpl(url, {
     method: "GET",
     headers: {
@@ -457,7 +492,7 @@ async function requestJson(url, key, headers = {}, fetchImpl = fetch) {
       Authorization: `Bearer ${key}`,
       ...headers,
     },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     const error = new Error(`HTTP ${response.status}`);
@@ -465,6 +500,26 @@ async function requestJson(url, key, headers = {}, fetchImpl = fetch) {
     throw error;
   }
   return response.json();
+}
+
+// A 4xx is the API's answer about this credential or this route and will read
+// the same on the next attempt, so it is reported rather than retried. A 5xx,
+// a timeout, and a transport error are the provider failing to answer at all,
+// which is the case a second attempt can still win.
+function usageFailureIsWorthRetrying(error) {
+  const status = Number(error?.status);
+  return !Number.isFinite(status) || status >= 500;
+}
+
+async function requestJsonWithRetry(url, key, headers, fetchImpl, { attempts, timeoutMs, delayMs }) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await requestJson(url, key, headers, fetchImpl, { timeoutMs });
+    } catch (error) {
+      if (attempt >= attempts || !usageFailureIsWorthRetrying(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
 }
 
 async function deepSeekAccount(fetchImpl) {
@@ -550,13 +605,48 @@ async function opencodeGoAccount(fetchImpl) {
   if (new URL(baseURL).origin !== "https://opencode.ai") {
     return localOnly("Plan usage is unavailable for a custom opencode endpoint");
   }
-  const payload = await requestJson(`${baseURL}/usage`, credential.value, {
-    "User-Agent": `codex-router/${VERSION}`,
-    ...openCodeSessionHeaders({ fallback: OPENCODE_SESSION_FALLBACKS.usage }),
-  }, fetchImpl);
-  const metrics = opencodeGoUsageMetrics(payload);
-  if (!metrics.length) throw new Error("opencode usage response was incomplete");
-  return { status: "available", source: "official-api", metrics };
+  try {
+    const payload = await requestJsonWithRetry(`${baseURL}/usage`, credential.value, {
+      "User-Agent": `codex-router/${VERSION}`,
+      ...openCodeSessionHeaders({ fallback: OPENCODE_SESSION_FALLBACKS.usage }),
+    }, fetchImpl, {
+      attempts: OPENCODE_USAGE_ATTEMPTS,
+      timeoutMs: OPENCODE_USAGE_TIMEOUT_MS,
+      delayMs: OPENCODE_USAGE_RETRY_DELAY_MS,
+    });
+    const metrics = opencodeGoUsageMetrics(payload);
+    if (!metrics.length) throw new Error("opencode usage response was incomplete");
+    // Only a read that produced windows is worth remembering: recording an
+    // empty report would replace a usable memory with nothing and turn the
+    // next outage into "usage unavailable".
+    rememberUsage("opencode-go", { metrics, dashboardUrl: OPENCODE_GO_DASHBOARD_URL });
+    return {
+      status: "available",
+      source: "official-api",
+      metrics,
+      dashboardUrl: OPENCODE_GO_DASHBOARD_URL,
+    };
+  } catch (error) {
+    const cached = readCachedUsage("opencode-go");
+    // Nothing has been read from this account yet, or every window it
+    // described has since reset. There is no honest number to show, so the
+    // failure reaches the caller exactly as it did before this memory existed.
+    if (!cached) throw error;
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      status: "stale",
+      source: "official-api",
+      metrics: cached.metrics,
+      dashboardUrl: cached.dashboardUrl || OPENCODE_GO_DASHBOARD_URL,
+      ...(cached.observedAt && resetTimestamp(cached.observedAt) !== undefined
+        ? { observedAt: resetTimestamp(cached.observedAt) }
+        : {}),
+      message:
+        `opencode's usage API did not answer (${reason}); showing its reading from `
+        + `${cached.observedAt ?? "an earlier refresh"}, which only understates usage `
+        + "because every window shown is still open.",
+    };
+  }
 }
 
 const MINIMAX_ACCOUNT_HOSTS = new Set(["api.minimax.io", "api.minimaxi.com"]);
@@ -685,6 +775,12 @@ const QWEN_PLAN_DASHBOARD_URL =
   "https://modelstudio.console.alibabacloud.com/ap-southeast-1/?tab=plan#/efm/subscription/token-plan";
 const OLLAMA_DASHBOARD_URL = "https://ollama.com/settings";
 const COMMANDCODE_DASHBOARD_URL = "https://commandcode.ai/studio";
+// opencode's Go plan is managed in the workspace console, whose path carries
+// the workspace id. The usage API answers on the same origin but reports only
+// the three windows, so the console address cannot be derived from the plan it
+// describes and is named here instead of on the docs page.
+const OPENCODE_GO_DASHBOARD_URL =
+  "https://opencode.ai/console/wrk_01KZXXPHBHSMVD794C63X173SF/go";
 const OPENROUTER_DASHBOARD_URL = "https://openrouter.ai/settings/credits";
 const VENICE_DASHBOARD_URL = "https://venice.ai/settings/api";
 // Nous publishes no credits or usage route on the inference API (a 404 on both
@@ -796,7 +892,11 @@ async function commandCodeAccount(fetchImpl) {
       {},
       fetchImpl,
     );
-    const metrics = commandCodeCreditsMetrics(payload);
+    // The monthly pool is reported as a remaining amount, so the total it is
+    // being spent against is remembered per cycle rather than read off the
+    // response. An unreadable pool simply leaves the monthly window out.
+    const monthlyGrant = observeCreditPool("commandcode", numberValue(payload?.credits?.monthlyCredits));
+    const metrics = commandCodeCreditsMetrics(payload, { monthlyGrant });
     if (!metrics.length) {
       return fallback("Command Code reported no plan windows; showing router traffic");
     }

@@ -462,6 +462,7 @@ export interface AccountUsage {
   accountEmail?: string | null;
   profilePending?: boolean;
   planType?: string;
+  dashboardUrl?: string;
   primary?: UsageMetric | null;
   secondary?: UsageMetric | null;
   dailyUsageBuckets?: UsageBucket[];

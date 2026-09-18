@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -408,6 +411,10 @@ test("Command Code usage reads plan windows from the billing credits API", async
   delete process.env.COMMAND_CODE_API_KEY;
   delete process.env.COMMANDCODE_API_KEY;
   process.env.COMMAND_CODE_API_KEY = "TEST_COMMANDCODE_USAGE_KEY";
+  // The monthly total is remembered per cycle, so this test must not write
+  // into the operator's own state directory.
+  const cyclesFile = path.join(os.tmpdir(), `credit-cycles-${process.pid}-${Date.now()}.json`);
+  process.env.MODEL_ROUTER_CREDIT_CYCLES = cyclesFile;
   try {
     const snapshot = await providerAccountUsageSnapshot({
       providerIds: ["commandcode"],
@@ -427,14 +434,6 @@ test("Command Code usage reads plan windows from the billing credits API", async
     assert.equal(snapshot.commandcode.status, "available");
     assert.equal(snapshot.commandcode.dashboardUrl, "https://commandcode.ai/studio");
     assert.deepEqual(snapshot.commandcode.metrics, [
-      {
-        kind: "balance",
-        label: "Plan credits",
-        value: 10,
-        currency: "USD",
-        detail: "Plan 10.00",
-        available: true,
-      },
       {
         kind: "quota",
         label: "5-hour limit",
@@ -456,10 +455,22 @@ test("Command Code usage reads plan windows from the billing credits API", async
         remaining: 4,
         unit: "credits",
       },
+      {
+        kind: "quota",
+        label: "Monthly limit",
+        usedPercent: 0,
+        remainingPercent: 100,
+        used: 0,
+        limit: 10,
+        remaining: 10,
+        unit: "USD",
+      },
     ]);
     assert.doesNotMatch(JSON.stringify(snapshot), /TEST_COMMANDCODE_USAGE_KEY/);
   } finally {
     delete process.env.COMMAND_CODE_API_KEY;
+    delete process.env.MODEL_ROUTER_CREDIT_CYCLES;
+    rmSync(cyclesFile, { force: true });
   }
 });
 
@@ -499,7 +510,7 @@ test("Command Code usage avoids the billing API for a custom endpoint", async ()
   }
 });
 
-test("normalizes opencode Go rolling, weekly, and monthly windows", () => {
+test("normalizes opencode Go's three plan windows under the shared names", () => {
   assert.deepEqual(opencodeGoUsageMetrics({
     usage: {
       rolling: { status: "ok", percent: 1, resetsAt: "2026-08-13T01:32:51.675Z" },
@@ -509,7 +520,7 @@ test("normalizes opencode Go rolling, weekly, and monthly windows", () => {
   }), [
     {
       kind: "quota",
-      label: "Rolling limit",
+      label: "5-hour limit",
       usedPercent: 1,
       remainingPercent: 99,
       used: 1,
@@ -543,11 +554,33 @@ test("normalizes opencode Go rolling, weekly, and monthly windows", () => {
   ]);
 });
 
+// The last-good memory is a state file like any other, so every test that can
+// reach it points it at a scratch path instead of the operator's own.
+function withUsageCache(run) {
+  const saved = process.env.MODEL_ROUTER_USAGE_CACHE;
+  const file = path.join(os.tmpdir(), `usage-cache-${process.pid}-${Date.now()}-${Math.random()}.json`);
+  process.env.MODEL_ROUTER_USAGE_CACHE = file;
+  return (async () => run(file))().finally(() => {
+    if (saved === undefined) delete process.env.MODEL_ROUTER_USAGE_CACHE;
+    else process.env.MODEL_ROUTER_USAGE_CACHE = saved;
+    rmSync(file, { force: true });
+  });
+}
+
+function openCodeUsageResponse(rollingPercent = 5) {
+  return new Response(JSON.stringify({
+    usage: {
+      rolling: { status: "ok", percent: rollingPercent, resetsAt: "2099-01-01T00:00:00Z" },
+      weekly: { status: "ok", percent: 60, resetsAt: "2099-01-08T00:00:00Z" },
+    },
+  }));
+}
+
 test("opencode Go usage reads the Zen usage API", async () => {
   const saved = process.env.OPENCODE_API_KEY;
   process.env.OPENCODE_API_KEY = "TEST_OPENCODE_USAGE_KEY";
   try {
-    const snapshot = await providerAccountUsageSnapshot({
+    const snapshot = await withUsageCache(() => providerAccountUsageSnapshot({
       providerIds: ["opencode-go"],
       fetchImpl: async (url, options) => {
         assert.equal(url, "https://opencode.ai/zen/go/v1/usage");
@@ -561,7 +594,7 @@ test("opencode Go usage reads the Zen usage API", async () => {
           },
         }));
       },
-    });
+    }));
     assert.equal(snapshot["opencode-go"].status, "available");
     assert.equal(snapshot["opencode-go"].metrics.length, 2);
     assert.equal(snapshot["opencode-go"].metrics[1].remainingPercent, 40);
@@ -591,6 +624,145 @@ test("opencode Go usage avoids the Zen API for a custom endpoint", async () => {
     else process.env.OPENCODE_API_KEY = savedKey;
     if (savedBase === undefined) delete process.env.OPENCODE_GO_BASE_URL;
     else process.env.OPENCODE_GO_BASE_URL = savedBase;
+  }
+});
+
+test("opencode Go usage retries the provider's own 503 burst", async () => {
+  const saved = process.env.OPENCODE_API_KEY;
+  process.env.OPENCODE_API_KEY = "TEST_OPENCODE_RETRY_KEY";
+  let calls = 0;
+  try {
+    const snapshot = await withUsageCache(() => providerAccountUsageSnapshot({
+      providerIds: ["opencode-go"],
+      fetchImpl: async () => {
+        calls += 1;
+        // The exact body opencode's aggregation backend answers with during a
+        // burst: the key is fine and the route exists, the reading does not.
+        return calls < 3
+          ? new Response(
+              JSON.stringify({ type: "error", error: { type: "api_error", message: "Go usage is unavailable" } }),
+              { status: 503 },
+            )
+          : openCodeUsageResponse(7);
+      },
+    }));
+    assert.equal(calls, 3);
+    assert.equal(snapshot["opencode-go"].status, "available");
+    assert.equal(snapshot["opencode-go"].metrics[0].usedPercent, 7);
+  } finally {
+    if (saved === undefined) delete process.env.OPENCODE_API_KEY;
+    else process.env.OPENCODE_API_KEY = saved;
+  }
+});
+
+test("opencode Go usage does not retry a rejected key", async () => {
+  const saved = process.env.OPENCODE_API_KEY;
+  process.env.OPENCODE_API_KEY = "TEST_OPENCODE_REJECTED_KEY";
+  let calls = 0;
+  try {
+    const snapshot = await withUsageCache(() => providerAccountUsageSnapshot({
+      providerIds: ["opencode-go"],
+      fetchImpl: async () => {
+        calls += 1;
+        return new Response(JSON.stringify({ error: { message: "Missing API key." } }), { status: 401 });
+      },
+    }));
+    // A 401 is the API's answer about this credential and reads the same on
+    // every attempt, so it must reach the user after one request rather than
+    // after three.
+    assert.equal(calls, 1);
+    assert.equal(snapshot["opencode-go"].status, "unavailable");
+    assert.match(snapshot["opencode-go"].message, /HTTP 401/);
+  } finally {
+    if (saved === undefined) delete process.env.OPENCODE_API_KEY;
+    else process.env.OPENCODE_API_KEY = saved;
+  }
+});
+
+test("opencode Go usage keeps its last reading when the API stays down", async () => {
+  const saved = process.env.OPENCODE_API_KEY;
+  process.env.OPENCODE_API_KEY = "TEST_OPENCODE_CACHE_KEY";
+  try {
+    await withUsageCache(async () => {
+      await providerAccountUsageSnapshot({
+        providerIds: ["opencode-go"],
+        fetchImpl: async () => openCodeUsageResponse(42),
+      });
+      const snapshot = await providerAccountUsageSnapshot({
+        providerIds: ["opencode-go"],
+        fetchImpl: async () => new Response("upstream is down", { status: 503 }),
+      });
+      const account = snapshot["opencode-go"];
+      // Not "available": this refresh did not read the account, and a surface
+      // that shows these windows has to be able to say which it is showing.
+      assert.equal(account.status, "stale");
+      assert.equal(account.metrics[0].usedPercent, 42);
+      assert.equal(account.dashboardUrl, "https://opencode.ai/console/wrk_01KZXXPHBHSMVD794C63X173SF/go");
+      assert.equal(typeof account.observedAt, "number");
+      assert.match(account.message, /HTTP 503/);
+      assert.match(account.message, /understates usage/);
+    });
+  } finally {
+    if (saved === undefined) delete process.env.OPENCODE_API_KEY;
+    else process.env.OPENCODE_API_KEY = saved;
+  }
+});
+
+test("opencode Go usage forgets a window once that window has reset", async () => {
+  const saved = process.env.OPENCODE_API_KEY;
+  process.env.OPENCODE_API_KEY = "TEST_OPENCODE_EXPIRY_KEY";
+  try {
+    await withUsageCache(async (cacheFile) => {
+      // A rolling window that resets in the past describes a window that no
+      // longer exists, so the remembered percentage must not be shown as one.
+      await providerAccountUsageSnapshot({
+        providerIds: ["opencode-go"],
+        fetchImpl: async () => new Response(JSON.stringify({
+          usage: {
+            rolling: { status: "ok", percent: 42, resetsAt: "2020-01-01T00:00:00Z" },
+            weekly: { status: "ok", percent: 60, resetsAt: "2099-01-08T00:00:00Z" },
+          },
+        })),
+      });
+      // The expired window is remembered as read and only dropped at the
+      // moment it is asked for, so the file is evidence of what was stored.
+      assert.match(readFileSync(cacheFile, "utf8"), /"usedPercent": 42/);
+      const snapshot = await providerAccountUsageSnapshot({
+        providerIds: ["opencode-go"],
+        fetchImpl: async () => {
+          throw new TypeError("fetch failed");
+        },
+      });
+      assert.equal(snapshot["opencode-go"].status, "stale");
+      assert.deepEqual(snapshot["opencode-go"].metrics.map((metric) => metric.label), ["Weekly limit"]);
+    });
+  } finally {
+    if (saved === undefined) delete process.env.OPENCODE_API_KEY;
+    else process.env.OPENCODE_API_KEY = saved;
+  }
+});
+
+test("opencode Go usage reports unavailable when nothing was ever read", async () => {
+  const saved = process.env.OPENCODE_API_KEY;
+  process.env.OPENCODE_API_KEY = "TEST_OPENCODE_COLD_KEY";
+  let calls = 0;
+  try {
+    const snapshot = await withUsageCache(() => providerAccountUsageSnapshot({
+      providerIds: ["opencode-go"],
+      fetchImpl: async () => {
+        calls += 1;
+        return new Response("upstream is down", { status: 503 });
+      },
+    }));
+    assert.equal(calls, 3);
+    // Nothing honest can be shown, so the failure is stated instead. This is
+    // the behavior every other provider keeps unconditionally.
+    assert.equal(snapshot["opencode-go"].status, "unavailable");
+    assert.equal(snapshot["opencode-go"].metrics.length, 0);
+    assert.match(snapshot["opencode-go"].message, /HTTP 503/);
+  } finally {
+    if (saved === undefined) delete process.env.OPENCODE_API_KEY;
+    else process.env.OPENCODE_API_KEY = saved;
   }
 });
 
@@ -945,16 +1117,8 @@ test("normalizes Command Code plan windows and skips a zero resetAt", () => {
       weekly: { used: 0, cap: 6, exceeded: false, resetAt: 1_786_579_200_000 },
     },
   }), [
-    // The credit pool leads: a coding plan runs out of credits long before it
-    // stops hitting the windows, so it is the number that ends the afternoon.
-    {
-      kind: "balance",
-      label: "Plan credits",
-      value: 10,
-      currency: "USD",
-      detail: "Plan 10.00",
-      available: true,
-    },
+    // The monthly pool is a remaining amount with no cap in the payload, so
+    // without a cycle total to measure it against it is not reported at all.
     {
       kind: "quota",
       label: "5-hour limit",
@@ -979,8 +1143,32 @@ test("normalizes Command Code plan windows and skips a zero resetAt", () => {
   ]);
 });
 
-test("Command Code top-ups and a low-credit warning reach the balance metric", () => {
-  const [balance] = commandCodeCreditsMetrics({
+// The endpoint reports the monthly pool as a remaining amount and says nothing
+// about the month it belongs to, so the window is only reportable once that
+// total is known. Used is the difference -- which is exactly limit - remaining.
+test("Command Code's monthly pool is measured against its cycle total", () => {
+  const metrics = commandCodeCreditsMetrics({
+    credits: { monthlyCredits: 34.999522866, purchasedCredits: 0, freeCredits: 0 },
+    windowLimits: {
+      fiveHour: { used: 0, cap: 14, exceeded: false, resetAt: 0 },
+      weekly: { used: 35, cap: 35, exceeded: true, resetAt: 1_790_076_225_187 },
+    },
+  }, { monthlyGrant: 70 });
+  const monthly = metrics.at(-1);
+  assert.equal(monthly.label, "Monthly limit");
+  assert.equal(monthly.unit, "USD");
+  assert.equal(monthly.limit, 70);
+  assert.equal(monthly.remaining, 34.999522866);
+  assert.ok(Math.abs(monthly.used - 35.000477134) < 1e-9);
+  assert.equal(monthly.remainingPercent, 100 - monthly.usedPercent);
+  assert.ok(Math.abs(monthly.remainingPercent - (34.999522866 / 70) * 100) < 1e-9);
+  // The month's own reset is not in the payload, so the window must not claim
+  // the weekly window's.
+  assert.equal(monthly.resetAt, undefined);
+});
+
+test("Command Code top-ups and a low-credit warning reach their own balance", () => {
+  const metrics = commandCodeCreditsMetrics({
     credits: {
       belowThreshold: true,
       creditThreshold: 2,
@@ -989,10 +1177,16 @@ test("Command Code top-ups and a low-credit warning reach the balance metric", (
       freeCredits: 0.25,
     },
     windowLimits: { fiveHour: { used: 0, cap: 3 } },
-  });
-  assert.equal(balance.value, 21.75);
-  assert.equal(balance.detail, "Plan 1.50 · Purchased 20.00 · Free 0.25");
-  assert.equal(balance.available, false);
+  }, { monthlyGrant: 30 });
+  const extra = metrics.find((metric) => metric.kind === "balance");
+  assert.equal(extra.label, "Extra credits");
+  assert.equal(extra.value, 20.25);
+  assert.equal(extra.detail, "Purchased 20.00 · Free 0.25");
+  assert.equal(extra.available, false);
+  // Bought credits sit beside the monthly pool, so they never move its share.
+  const monthly = metrics.find((metric) => metric.label === "Monthly limit");
+  assert.equal(monthly.limit, 30);
+  assert.equal(monthly.remaining, 1.5);
 });
 
 // Nothing to report is reported as nothing. A zero-valued balance would read

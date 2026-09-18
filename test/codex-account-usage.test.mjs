@@ -146,6 +146,9 @@ test("normalizes Codex limits and daily usage without account credentials", () =
 
   assert.deepEqual(value, {
     fetchedAt: "2026-07-21T12:00:00.000Z",
+    // The account snapshot carries the page its own usage is shown on, so the
+    // Control Center can link to it without inventing a URL.
+    dashboardUrl: "https://chatgpt.com/codex/cloud/settings/usage",
     planType: "pro",
     limitId: "codex",
     primary: {

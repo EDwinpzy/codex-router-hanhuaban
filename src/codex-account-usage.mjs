@@ -6,6 +6,9 @@ import { discoveryDisabled } from "./discovery-mode.mjs";
 import { spawnableCommand } from "./spawnable-command.mjs";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+// Where ChatGPT shows this account's Codex usage and limits. The shorter
+// `/codex/settings/usage` path redirects here.
+const ACCOUNT_USAGE_URL = "https://chatgpt.com/codex/cloud/settings/usage";
 export const ACCOUNT_POOL_USAGE_PROBE_LIMIT = 8;
 export const ACCOUNT_POOL_USAGE_TIMEOUT_MS = 2_000;
 
@@ -89,6 +92,10 @@ export function normalizeCodexAccountUsage(rateLimitResponse, usageResponse, now
   const summary = usageResponse?.summary || {};
   return {
     fetchedAt: now.toISOString(),
+    // Where the account's own usage and limits are shown. ChatGPT serves the
+    // Codex usage page under this path, which is only a sign-in away for the
+    // account this snapshot belongs to.
+    dashboardUrl: ACCOUNT_USAGE_URL,
     planType: typeof limits.planType === "string" ? limits.planType : null,
     limitId: typeof limits.limitId === "string" ? limits.limitId : null,
     primary: normalizeWindow(limits.primary),
