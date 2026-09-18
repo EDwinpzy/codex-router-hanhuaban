@@ -19,6 +19,7 @@ const {
   splitLocalModelTag,
 } = await import("../src/local-model-ref.mjs");
 const {
+  OLLAMA_CLI_TIMEOUT_MS,
   ensureOllamaHeadless,
   localOllamaRuntimeSnapshot,
   ollamaRuntimeStateOwnsProcess,
@@ -43,7 +44,12 @@ const {
   setVisionBridgeEnabled,
   setVisionBridgeEngine,
 } = await import("../src/vision-bridge-state.mjs");
-const { localModelsSnapshot } = await import("../src/local-models.mjs");
+const {
+  localModelCapabilities,
+  localModelInventory,
+  localModelsSnapshot,
+  runningLocalModels,
+} = await import("../src/local-models.mjs");
 
 test("Ollama model URLs normalize to explicit family and variant tags", () => {
   assert.equal(normalizeLocalModelTag("gemma4:12b"), "gemma4:12b");
@@ -767,4 +773,42 @@ test("a vision-only local pull is adopted as the first image reader, not a Codex
   assert.equal(result.canChat, false);
   assert.equal(result.adoptedVision, true);
   assert.equal(readLocalDownload().detail, "ready for images");
+});
+
+test("a stalled Ollama CLI degrades local reads instead of hanging the caller", () => {
+  // On Windows the CLI starts the Ollama desktop app whenever no server answers
+  // and then waits for it. That wait has been measured in minutes, and
+  // `spawnSync` carries no bound of its own, so one unbounded call held the
+  // Control Center's snapshot past its 90-second budget and painted a timeout
+  // over a router whose only problem was local model software. Every
+  // server-contacting read has to bound the call, and a timed-out call has to
+  // read as "nothing here" rather than throwing into the caller.
+  const calls = [];
+  const stalled = (command, args, options) => {
+    calls.push({ command, args, options });
+    // Exactly what `spawnSync` reports when its own timeout fires.
+    return {
+      status: null,
+      signal: "SIGTERM",
+      error: Object.assign(new Error("ETIMEDOUT"), { code: "ETIMEDOUT" }),
+    };
+  };
+  assert.deepEqual(localModelInventory({ spawn: stalled }), []);
+  assert.deepEqual(runningLocalModels({ spawn: stalled }), []);
+  assert.deepEqual(
+    localModelCapabilities("qwen2.5vl:3b", "abc123", { spawn: stalled, cache: {} }),
+    [],
+  );
+  assert.deepEqual(
+    calls.map((call) => call.args[0]).sort(),
+    ["list", "ps", "show"],
+  );
+  for (const call of calls) {
+    assert.ok(
+      Number.isFinite(call.options.timeout) && call.options.timeout > 0,
+      `ollama ${call.args[0]} must bound the CLI call`,
+    );
+    // One shared bound, so a future read cannot quietly pick its own.
+    assert.equal(call.options.timeout, OLLAMA_CLI_TIMEOUT_MS);
+  }
 });

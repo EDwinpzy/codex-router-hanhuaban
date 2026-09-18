@@ -23,9 +23,27 @@ export const OLLAMA_RUNTIME_STATE_PATH =
 export const OLLAMA_LOG_PATH =
   process.env.MODEL_ROUTER_OLLAMA_LOG || path.join(STATE_DIR, "ollama.log");
 
+// The bound every server-contacting CLI read carries -- `ollama show`, `list`,
+// and `ps`. On Windows the CLI starts the Ollama desktop app whenever no server
+// answers and then waits for it, and that wait has been measured in minutes;
+// `spawnSync` has no bound of its own, so one unbounded read held the Control
+// Center's snapshot past its budget and painted a timeout over a router whose
+// only problem was local model software. A call that hits this bound comes back
+// as `status: null`, which every caller already reads as "nothing here" -- the
+// same degradation a missing CLI produces, and never a thrown error.
+export const OLLAMA_CLI_TIMEOUT_MS = 10_000;
+
+// Every probe in this module runs inside a console-less background process:
+// the Windows service is started under `wscript.exe //B`, the Control Center
+// is a GUI binary, and both reach the router through a `CREATE_NO_WINDOW`
+// child. A console application started from one of those allocates a whole new
+// console window, and Windows Terminal draws that window on screen for as long
+// as the probe lives -- so a bare `ollama --version` opens a terminal the
+// operator watches flash and close, once per status render. `windowsHide`
+// passes `CREATE_NO_WINDOW` down; it is a correctness flag here, not styling.
 function commandWorks(command, args = ["--version"], spawn = spawnSync) {
   try {
-    return spawn(command, args, { stdio: "ignore" }).status === 0;
+    return spawn(command, args, { stdio: "ignore", windowsHide: true }).status === 0;
   } catch {
     return false;
   }
@@ -65,7 +83,7 @@ export function parseOllamaVersion(output) {
 export function ollamaVersion({ command = ollamaCommand(), spawn = spawnSync } = {}) {
   if (!command) return undefined;
   try {
-    const result = spawn(command, ["--version"], { encoding: "utf8" });
+    const result = spawn(command, ["--version"], { encoding: "utf8", windowsHide: true });
     if (result.status !== 0) return undefined;
     return parseOllamaVersion(`${result.stdout || ""}\n${result.stderr || ""}`);
   } catch {
@@ -357,6 +375,7 @@ export function ollamaUpdatePlan({
   if (platform === "win32" && commandExists("winget", spawn)) {
     const listed = spawn("winget", ["list", "--id", "Ollama.Ollama", "--exact"], {
       stdio: "ignore",
+      windowsHide: true,
     });
     if (listed.status === 0) {
       return {
