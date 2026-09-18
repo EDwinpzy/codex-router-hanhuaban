@@ -5,6 +5,23 @@ import { CALLER_SECRET_PATH, PORTS } from "./paths.mjs";
 
 const OFFLINE_ACTIVITY = Object.freeze({ state: "offline", active: [], activeCount: 0 });
 
+// The router serves `/health` from a 3s cache, but a cache miss falls through to
+// a live probe of each downstream service, and `probeService` aborts that probe
+// at 3_000ms (src/router.mjs). This client budget therefore has to sit strictly
+// *above* the router's own worst case, not equal to it: when both were 3_000ms
+// the client lost every photo finish, because the router still had to serialise
+// and send the body after its probe finally resolved. A hung gateway -- TCP
+// accepted, no reply, which is what a wedged LiteLLM/uvicorn looks like -- then
+// painted the entire router as "offline" instead of naming the single
+// dependency that was down, and the tray kept reporting a healthy router as
+// dead until the gateway recovered.
+//
+// Deliberately generous: a healthy router answers this endpoint in ~2ms, so the
+// ceiling only ever applies on the failure path, where the router's own probe
+// abort still returns the real answer (~3s) long before it. The panel guards its
+// poll with an in-flight flag, so a larger budget cannot pile requests up.
+export const DEFAULT_HEALTH_TIMEOUT_MS = 6_000;
+
 function offlineHealth(error) {
   return {
     ok: false,
@@ -30,7 +47,7 @@ export async function readControlHealth({
   fetchImpl = globalThis.fetch,
   readCallerSecret = () => readFileSync(CALLER_SECRET_PATH, "utf8"),
   routerPort = PORTS.router,
-  timeoutMs = 3_000,
+  timeoutMs = DEFAULT_HEALTH_TIMEOUT_MS,
 } = {}) {
   let callerSecret;
   try {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { readControlHealth } from "../src/control-health.mjs";
+import { DEFAULT_HEALTH_TIMEOUT_MS, readControlHealth } from "../src/control-health.mjs";
 
 const CALLER_SECRET = "test-caller-secret-0123456789abcdef";
 
@@ -86,4 +86,31 @@ test("control health preserves unreachable and timeout projections", async () =>
   assert.equal(timeout.error, "Health check timed out.");
   assert.deepEqual(unreachable.activity, { state: "offline", active: [], activeCount: 0 });
   assert.deepEqual(timeout.activity, { state: "offline", active: [], activeCount: 0 });
+});
+
+// The router answers a `/health` cache miss only after aborting its own 3s probe
+// of each downstream service, so a client budget equal to that probe loses every
+// photo finish: a wedged gateway -- TCP accepted, no reply -- painted the whole
+// router as offline instead of naming the one dependency that was down. This
+// measures the *default* budget against that probe, and it is the only test that
+// fails if the two are ever made equal again.
+test("control health waits out the router's own probe before calling it offline", async () => {
+  const started = Date.now();
+  const result = await readControlHealth({
+    readCallerSecret: () => CALLER_SECRET,
+    fetchImpl: (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => {
+        reject(Object.assign(new Error("aborted"), { name: "TimeoutError" }));
+      });
+    }),
+  });
+  const elapsed = Date.now() - started;
+
+  assert.equal(result.error, "Health check timed out.");
+  assert.ok(
+    elapsed > 3_500,
+    `DEFAULT_HEALTH_TIMEOUT_MS (${DEFAULT_HEALTH_TIMEOUT_MS}ms) must outlast the router's 3s probe; `
+      + `it gave up after ${elapsed}ms`,
+  );
+  assert.ok(elapsed < 15_000, `the default budget must stay bounded; it ran ${elapsed}ms`);
 });
