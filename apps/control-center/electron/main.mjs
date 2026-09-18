@@ -4,6 +4,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  screen,
   shell,
   session,
   Tray,
@@ -233,15 +234,47 @@ function createWindow() {
   return createdWindow;
 }
 
+// A window created with `show: false` stays parked at the Windows off-screen
+// placeholder until it is shown, and Windows reports that same placeholder as
+// the window's normal position -- so a later show() preserves it. Revealing an
+// off-screen window publishes `visible: true` for a window nobody can see,
+// which is indistinguishable from a frozen app, so every reveal first clamps
+// the bounds onto a real display. A window already intersecting a display is
+// left exactly where the operator put it.
+function ensureWindowOnDisplay(win) {
+  if (win.isFullScreen()) return;
+  const bounds = win.getBounds();
+  const area = screen.getDisplayMatching(bounds).workArea;
+  const intersects = bounds.x < area.x + area.width
+    && bounds.x + bounds.width > area.x
+    && bounds.y < area.y + area.height
+    && bounds.y + bounds.height > area.y;
+  if (intersects) return;
+  const width = Math.min(Math.max(bounds.width, 960), area.width);
+  const height = Math.min(Math.max(bounds.height, 640), area.height);
+  win.setBounds({
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + (area.height - height) / 2),
+    width,
+    height,
+  });
+}
+
 function revealWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
+  ensureWindowOnDisplay(mainWindow);
   // The native host is an LSUIElement and never owns a Dock tile. Let its
   // embedded Control Center represent the product in the Dock and Command-Tab
   // for as long as this process is alive, including while the window is hidden,
   // so switching away and back does not make the app look like it quit.
   showDockForVisibleWindow();
   mainWindow.show();
+  // show() deiconifies without raising. Windows denies foreground activation to
+  // a process that did not receive the user's input -- exactly the single
+  // instance that the tray and the Start Menu shortcut hand the request to --
+  // so an unraised window stays buried under maximized applications.
+  mainWindow.moveTop();
   mainWindow.focus();
   windowVisible = true;
   publishLifecycleState();
