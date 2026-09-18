@@ -595,6 +595,12 @@ test(
       const stateDir = windowsStateDir(testRoot);
       const wrapperPath = path.join(stateDir, "start-codex-router.cmd");
       const launcherPath = path.join(stateDir, "start-codex-router-hidden.vbs");
+      // The watchdog is a separate unit with its own launcher pair, so it has
+      // to be written on install and removed on uninstall on the same terms as
+      // the router's -- otherwise uninstall leaves a task that keeps probing
+      // for a router that is no longer installed.
+      const watchdogWrapperPath = path.join(stateDir, "health-watchdog.cmd");
+      const watchdogLauncherPath = path.join(stateDir, "health-watchdog-hidden.vbs");
       const run = (command) =>
         JSON.parse(serviceCommand("service-windows.mjs", "win32", testRoot, command));
 
@@ -604,22 +610,34 @@ test(
       assert.equal(run("install").installed, false);
       assert.equal(existsSync(wrapperPath), true);
       assert.equal(existsSync(launcherPath), true);
+      assert.equal(existsSync(watchdogWrapperPath), true);
+      assert.equal(existsSync(watchdogLauncherPath), true);
       assert.equal(statSync(wrapperPath).mode & 0o777, 0o600);
       assert.equal(statSync(launcherPath).mode & 0o777, 0o600);
+      assert.equal(statSync(watchdogWrapperPath).mode & 0o777, 0o600);
+      assert.equal(statSync(watchdogLauncherPath).mode & 0o777, 0o600);
 
       const bytes = readFileSync(launcherPath);
+      const watchdogBytes = readFileSync(watchdogLauncherPath);
       // wscript.exe falls back to the ANSI code page without this byte order
       // mark, which corrupts a state directory holding non-ASCII characters.
       assert.deepEqual([...bytes.subarray(0, 2)], [0xff, 0xfe]);
       assert.match(bytes.toString("utf16le").slice(1), /^Option Explicit\r\n/);
 
+      // The watchdog launcher is read by the same host, so it carries the same
+      // byte order mark for the same reason.
+      assert.deepEqual([...watchdogBytes.subarray(0, 2)], [0xff, 0xfe]);
+
       // Reinstalling over an existing pair overwrites instead of failing.
       assert.equal(run("install").installed, false);
       assert.equal(readFileSync(launcherPath).equals(bytes), true);
+      assert.equal(readFileSync(watchdogLauncherPath).equals(watchdogBytes), true);
 
       assert.equal(run("uninstall").installed, false);
       assert.equal(existsSync(wrapperPath), false);
       assert.equal(existsSync(launcherPath), false);
+      assert.equal(existsSync(watchdogWrapperPath), false);
+      assert.equal(existsSync(watchdogLauncherPath), false);
 
       // Uninstalling again must not fail on the already-removed launchers.
       assert.equal(run("uninstall").installed, false);

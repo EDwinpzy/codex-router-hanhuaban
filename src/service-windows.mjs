@@ -39,7 +39,14 @@ const HOST_MANAGED = process.platform === "win32";
 
 const effectivePlatform = process.env.CODEX_ROUTER_SERVICE_PLATFORM || process.platform;
 const command = process.argv[2] || "status";
-const renderCommands = new Set(["render", "render-launcher", "render-task"]);
+const renderCommands = new Set([
+  "render",
+  "render-launcher",
+  "render-task",
+  "render-watchdog",
+  "render-watchdog-launcher",
+  "render-watchdog-task",
+]);
 const taskName = "Codex Router";
 const guardLauncherWrite = () => assertServiceWriteIsolated(STATE_DIR, {
   redirected: Boolean(
@@ -51,6 +58,15 @@ const guardLauncherWrite = () => assertServiceWriteIsolated(STATE_DIR, {
 
 const wrapperPath = path.join(STATE_DIR, "start-codex-router.cmd");
 const launcherPath = path.join(STATE_DIR, "start-codex-router-hidden.vbs");
+// The health watchdog is a second, independent unit. It must not share the
+// router's task: that task's minute heartbeat already restarts a *dead*
+// router, and `MultipleInstances IgnoreNew` is exactly why it cannot see a
+// *hung* one. A separate unit also keeps the watchdog running when the router
+// task itself has been disabled or ended.
+const watchdogTaskName = "Codex Router Watchdog";
+const watchdogWrapperPath = path.join(STATE_DIR, "health-watchdog.cmd");
+const watchdogLauncherPath = path.join(STATE_DIR, "health-watchdog-hidden.vbs");
+const watchdogLogPath = path.join(STATE_DIR, "health-watchdog-task.log");
 
 if (effectivePlatform !== "win32" && !renderCommands.has(command)) {
   throw new Error("The Task Scheduler service manager runs on Windows only.");
@@ -182,6 +198,59 @@ function writeLaunchers() {
     launcherPath,
     Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(launcher(), "utf16le")]),
   );
+  writeAtomic(watchdogWrapperPath, Buffer.from(watchdogWrapper(), "utf8"));
+  writeAtomic(
+    watchdogLauncherPath,
+    Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(watchdogLauncher(), "utf16le")]),
+  );
+}
+
+// The watchdog needs the runtime's own coordinates and nothing else. It
+// deliberately does NOT inherit providerApiKeyServiceEnvironment(): this
+// process runs every two minutes and reads no credential, so handing it API
+// keys would widen their exposure for no benefit.
+function watchdogWrapper() {
+  const variables = {
+    MODEL_ROUTER_TARGET: TARGET,
+    MODEL_ROUTER_STATE_DIR: STATE_DIR,
+    MODEL_ROUTER_QUIET: "1",
+    MODEL_ROUTER_PORT: String(PORTS.router),
+    CODEX_HOME,
+    CODEX_ROUTER_STATE_DIR: STATE_DIR,
+    CODEX_ROUTER_QUIET: "1",
+    CODEX_ROUTER_PORT: String(PORTS.router),
+    // The probe is a loopback fetch. On a machine with a system-wide proxy an
+    // explicit bypass is what keeps 127.0.0.1 off it -- without one every
+    // check would look like a hang, and the watchdog would restart a router
+    // that was healthy the whole time.
+    no_proxy: "localhost,127.0.0.1",
+    NO_PROXY: "localhost,127.0.0.1",
+  };
+  const script = path.join(SOURCE_ROOT, "src", "health-watchdog.mjs");
+  return `@echo off\r\nsetlocal DisableDelayedExpansion\r\n${Object.entries(variables)
+    .map(([key, value]) => `set "${key}=${cmdEscape(value)}"`)
+    .join("\r\n")}\r\n"${cmdEscape(process.execPath)}" "${cmdEscape(script)}" >> "${cmdEscape(watchdogLogPath)}" 2>&1\r\n`;
+}
+
+// Same windowless host as the router launcher (issue #565). A scheduled task
+// that runs a console program directly allocates a console window, and this
+// one fires every two minutes, so it would be the more visible of the two.
+function watchdogLauncher() {
+  return [
+    "Option Explicit",
+    "",
+    "Dim quote, shell, status",
+    "quote = Chr(34)",
+    'Set shell = CreateObject("WScript.Shell")',
+    "On Error Resume Next",
+    `status = shell.Run("cmd.exe /D /C " & quote & quote & "${vbsEscape(watchdogWrapperPath)}" & quote & quote, 0, True)`,
+    "If Err.Number <> 0 Then",
+    "  WScript.Quit 1",
+    "End If",
+    "On Error Goto 0",
+    "WScript.Quit status",
+    "",
+  ].join("\r\n");
 }
 
 // `//B` suppresses script errors and prompts, `//NoLogo` suppresses the banner;
@@ -261,6 +330,75 @@ function installTask() {
 // retrying `/Run`: it continues as soon as the instance has actually gone
 // instead of guessing how long that takes, and it gives up on a fixed deadline
 // instead of hoping one extra attempt is enough.
+function watchdogTaskAction() {
+  return {
+    execute: "wscript.exe",
+    argument: `//B //NoLogo "${watchdogLauncherPath}"`,
+  };
+}
+
+// Registered alongside the router task, but never allowed to fail the install:
+// a restricted, non-elevated terminal can still leave a correctly configured
+// router, and losing that because a second, purely defensive task was refused
+// would trade a real capability for an enhancement. The failure is reported on
+// stderr and swallowed instead.
+function installWatchdogTask() {
+  if (skipServiceManagerCall({ hostManaged: HOST_MANAGED })) return;
+  const { execute, argument } = watchdogTaskAction();
+  const script = [
+    "$action = New-ScheduledTaskAction -Execute $env:CODEX_ROUTER_WATCHDOG_EXECUTE -Argument $env:CODEX_ROUTER_WATCHDOG_ARGUMENT",
+    // No AtLogOn trigger: a repetition that starts now already covers every
+    // later logon, where a second trigger would only produce a duplicate tick.
+    "$heartbeat = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 2) -RepetitionDuration (New-TimeSpan -Days 9999)",
+    // IgnoreNew keeps a slow tick (probe, then a bounded restart) from stacking
+    // up behind the tick after it.
+    "$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries",
+    "$principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited",
+    "Register-ScheduledTask -TaskName $env:CODEX_ROUTER_WATCHDOG_TASK -Action $action -Trigger $heartbeat -Settings $settings -Principal $principal -Force | Out-Null",
+  ].join("; ");
+  try {
+    execFileSync(
+      "powershell.exe",
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+      {
+        env: {
+          ...process.env,
+          // The action strings travel through the environment so the quotes
+          // around the launcher path never pass through powershell.exe's
+          // -Command reparse (same reason as installTask).
+          CODEX_ROUTER_WATCHDOG_TASK: watchdogTaskName,
+          CODEX_ROUTER_WATCHDOG_EXECUTE: execute,
+          CODEX_ROUTER_WATCHDOG_ARGUMENT: argument,
+        },
+        windowsHide: true,
+        stdio: ["ignore", "ignore", "ignore"],
+      },
+    );
+  } catch (error) {
+    // Off the host platform -- a POSIX render test exercising this module --
+    // powershell.exe legitimately does not exist, and reporting that as a
+    // failure would put noise in every such run for a condition the test
+    // already expects. Only a real Windows host has a real registration to
+    // have lost.
+    if (HOST_MANAGED) {
+      console.error(
+        "[codex-router] the health watchdog task could not be registered; the " +
+          "router itself is unaffected and the watchdog stays inactive: " +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+}
+
+function removeWatchdogTask() {
+  if (skipServiceManagerCall({ hostManaged: HOST_MANAGED })) return;
+  try {
+    schtasks(["/Delete", "/TN", watchdogTaskName, "/F"], { quiet: true, mutating: true });
+  } catch {
+    // A missing task is the desired end state.
+  }
+}
+
 const TASK_STOP_TIMEOUT_MS = 10_000;
 const TASK_STOP_POLL_MS = 250;
 // Every state query has to return for the deadline above to mean anything, so a
@@ -456,10 +594,13 @@ if (
     "render",
     "render-launcher",
     "render-task",
+    "render-watchdog",
+    "render-watchdog-launcher",
+    "render-watchdog-task",
   ]).has(command)
 ) {
   console.error(
-    "Usage: service-windows.mjs install|uninstall|start|stop|restart|status|render|render-launcher|render-task",
+    "Usage: service-windows.mjs install|uninstall|start|stop|restart|status|render|render-launcher|render-task|render-watchdog|render-watchdog-launcher|render-watchdog-task",
   );
   process.exit(2);
 }
@@ -470,6 +611,12 @@ if (command === "render") {
   process.stdout.write(launcher());
 } else if (command === "render-task") {
   process.stdout.write(`${JSON.stringify(taskAction())}\n`);
+} else if (command === "render-watchdog") {
+  process.stdout.write(watchdogWrapper());
+} else if (command === "render-watchdog-launcher") {
+  process.stdout.write(watchdogLauncher());
+} else if (command === "render-watchdog-task") {
+  process.stdout.write(`${JSON.stringify(watchdogTaskAction())}\n`);
 } else if (command === "install") {
   // Keep the guard outside the scheduler-recovery catch below. An unredirected
   // test install is a safety violation, not a restricted Task Scheduler
@@ -492,6 +639,9 @@ if (command === "render") {
     // hidden run — the console window would survive until the next logon.
     endTask();
     installTask();
+    // Registered after the router task so a failure here can never leave the
+    // router unregistered; installWatchdogTask swallows its own errors.
+    installWatchdogTask();
     schtasks(["/Run", "/TN", taskName], { quiet: true, mutating: true });
   } catch {
     // Scheduled-task creation can be restricted in a non-elevated terminal. The
@@ -516,12 +666,15 @@ if (command === "render") {
   // not redirected its service state directory.
   guardLauncherWrite();
   endTask();
+  // The watchdog is a separate unit, so removing the router task does not take
+  // it away: it would otherwise keep running against an uninstalled router.
+  removeWatchdogTask();
   try {
     schtasks(["/Delete", "/TN", taskName, "/F"], { quiet: true, mutating: true });
   } catch {
     // The task may not exist.
   }
-  for (const target of [launcherPath, wrapperPath]) {
+  for (const target of [launcherPath, wrapperPath, watchdogLauncherPath, watchdogWrapperPath]) {
     try {
       if (existsSync(target)) unlinkSync(target);
     } catch {
