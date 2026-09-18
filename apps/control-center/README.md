@@ -120,7 +120,8 @@ npm run electron:dev
 The application resolves the router from `CODEX_ROUTER_SOURCE_ROOT` (or the
 compatible `MODEL_ROUTER_SOURCE_ROOT` override), the source checkout containing
 it, the install manifest, or the stable user checkout: `%LOCALAPPDATA%\codex-router`
-on Windows and `${XDG_DATA_HOME:-~/.local/share}/codex-router` on macOS/Linux.
+on Windows (this workstation's live checkout is `D:\MyProjects\codex-router`)
+and `${XDG_DATA_HOME:-~/.local/share}/codex-router` on macOS/Linux.
 The resolved root must pass ownership and write-permission checks.
 
 ## Verification and packaging

@@ -43,7 +43,9 @@ Never ask me to paste a token or API key into chat.
 ```
 
 Codex should use a stable checkout, not a temporary directory. The service
-definition stores the checkout's absolute path.
+definition stores the checkout's absolute path, so the checkout is what actually
+runs: on Windows this project's live checkout is `D:\MyProjects\codex-router`,
+and a leftover copy under `%LOCALAPPDATA%\codex-router` is not the installed one.
 
 # Guided terminal install
 

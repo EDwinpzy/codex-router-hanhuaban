@@ -397,7 +397,7 @@ user-message path; those settings do not weaken the post-tool invariant.
 
 For a quiet worker, run `bin/control activity <thread-id>` from the installed
 checkout (on Windows, `codex-router.ps1 activity <thread-id>` from
-`%LOCALAPPDATA%\codex-router`). The command reads the capability-protected `/v1/activity` endpoint;
+`D:\MyProjects\codex-router`). The command reads the capability-protected `/v1/activity` endpoint;
 unauthenticated `/health` keeps its existing compact contract. Active requests
 remain visible until their handlers release resources, independently of tray
 record retention. The snapshot includes router-upstream attempt count, raw byte

@@ -18,7 +18,8 @@ install root is the `current.sourceRoot` field of
 `~/.codex/codex-router/install-manifest.json` (`%USERPROFILE%` on Windows),
 and the command is `<sourceRoot>/bin/media` (`<sourceRoot>\model-router.ps1
 codex media` on Windows). Quote the path; it may contain spaces. If the
-manifest is missing, try `~/.local/share/codex-router/bin/media`.
+manifest is missing, try `~/.local/share/codex-router/bin/media`, or
+`D:\MyProjects\codex-router\model-router.ps1 codex media` on Windows.
 
 Always pass `--json` so the result is machine-readable, and `--out` so the
 file lands where the user wants it (default: the current directory).

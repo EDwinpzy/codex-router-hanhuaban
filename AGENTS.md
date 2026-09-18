@@ -56,8 +56,15 @@ user.
    Read-only checks are allowed. Do not install a package manager or system
    runtime without the user's permission.
 2. Use a stable checkout: `~/.local/share/codex-router` on macOS/Linux, or
-   `%LOCALAPPDATA%\codex-router` on Windows. Do not install the service from a
-   temporary clone.
+   `D:\MyProjects\codex-router` on Windows — that is the checkout this
+   workstation installed the service, the desktop app, and the scheduled tray
+   task from, so it is the only copy to edit, rebuild, and package. A leftover
+   copy under `%LOCALAPPDATA%\codex-router` is not the live project; editing it
+   changes nothing the user runs. Do not install the service from a temporary
+   clone. When in doubt, read `current.sourceRoot` from
+   `~/.codex/codex-router/install-manifest.json`
+   (`%USERPROFILE%\.codex\codex-router\install-manifest.json` on Windows) and
+   work in the path that file names.
 3. Never ask the user to paste OAuth tokens or API keys into chat, command
    arguments, logs, environment snippets, or tracked files.
 4. Determine which provider IDs the user requested: `anthropic-api`,
@@ -166,7 +173,8 @@ user.
    an unknown router automatically.
 7. On macOS/Linux, run
    `./install.sh --target codex --auto --providers IDS --migrate-known` from the
-   stable checkout. On Windows, run
+   stable checkout. On Windows, run the same flow from
+   `D:\MyProjects\codex-router` with
    `./install.ps1 -Target codex -Auto -Providers IDS -MigrateKnown`. Omit the
    migration flag when detection found nothing. Do not enable the smoke test
    unless the user agrees to a quota-consuming request.
@@ -1031,6 +1039,41 @@ surfaces.
    the tray must say usage is unavailable rather than showing stale or empty
    numbers. Routed request/token accounting comes from the shared usage-events
    pipeline and needs no per-provider work beyond correct event recording.
+   A provider whose usage API exists but refuses in bursts is a different case
+   from one that has no API at all. opencode is the case: its route answers
+   `503 Go usage is unavailable` in windows of minutes while the same key
+   succeeds before and after, so one attempt per refresh reports an upstream
+   fault as a broken card. Retry it inside the caller's budget, and remember
+   the last reading that produced metrics (`src/provider-usage-cache.mjs`) --
+   but a remembered reading is only served for windows that are still open,
+   under a status that says it is not from this refresh, and with the instant
+   it was taken. Never serve it as `available`: a window that is still open can
+   only have accumulated more usage since, so the memory is honest as a lower
+   bound and a lie as a current figure. Retrying and remembering stay scoped to
+   the routes with evidence of this failure mode, not applied to every
+   provider -- a 4xx is the API's answer about the credential and must reach
+   the user after one attempt.
+5. **A reported pool with no cap is remembered, never invented.** An endpoint
+   that answers with a *remaining* amount and no cap beside it cannot be turned
+   into a percentage by reading it. Command Code's monthly pool is the case:
+   `src/provider-credit-cycles.mjs` remembers what the pool held when its cycle
+   opened -- a pool that only falls keeps its total, a pool that grows is a new
+   cycle at the value it grew to -- and the card reports that total as a window.
+   Do not hardcode a plan amount instead: it goes stale the moment the provider
+   ships a different one, while a first sighting that opens looking unspent
+   corrects itself at the first refill. Credits that sit beside the pool rather
+   than inside it (purchased, granted) stay out of the window's percentage and
+   get their own balance row, or a top-up silently moves the number the user is
+   watching.
+6. **The allowances are one card per account, and a failed report keeps its
+   card.** `apps/control-center/src/pages/account-allowances.tsx` owns the
+   cards, their window order, their reset lines, and their per-account
+   dashboard link, and both the Usage page and the Dashboard render that one
+   implementation. An account whose own usage API fails keeps its seat in the
+   row and names the failure with the traffic this router measured for it:
+   dropping the card collapses the row, which reads as an account that went away
+   rather than as a request that failed. Do not restate the card layout in a
+   second page, and do not let a plan with one window stretch to fill the grid.
 
 ## Vision bridge for text-only models
 
@@ -2637,6 +2680,57 @@ start does not exist at request latency. The port has to already be open.
 - `test/presence-state.test.mjs` covers both signals, the override, the round
   trip, and the fact that always-on is left alone. A change to the gate needs a
   test there.
+
+## Nothing a console-less surface spawns may open a console window on Windows
+
+The tray and the Control Center own no console, and neither does the router
+service as Windows starts it: the scheduled task runs `wscript.exe //B` and the
+Electron hosts are GUI binaries. Child processes inherit that absence rather
+than creating a window — except for console applications, which allocate a fresh
+console when their parent has none. Windows Terminal then draws that window on
+screen for as long as the child lives, so the symptom is a terminal appearing
+and vanishing once per poll, which reads as an unrelated tool updating itself.
+
+- Every `spawn`, `spawnSync`, and `execFileSync` a console-less surface can
+  reach passes `windowsHide: true`, and a new one must. That is the flag that
+  carries `CREATE_NO_WINDOW` down -- a correctness flag here, not styling. Node
+  ignores it on POSIX, so a call site that drops it passes every test and review
+  off Windows. The sweep is not finished: the repair and update paths in
+  `src/doctor.mjs`, `src/support-bundle.mjs`, `src/install-manifest.mjs`,
+  `src/update.mjs`, and `src/service.mjs` still spawn without it.
+- The audit is a test rather than a review habit:
+  `test/windows-console-hidden.test.mjs` drives the real exported functions and
+  reads the options each one hands to an injected spawn. A new probe in
+  `src/local-models.mjs`, `src/ollama-runtime.mjs`, `src/vision-host.mjs`, or
+  `src/local-uninstall.mjs` extends that file in the same change.
+- Those same reads are bounded, because on Windows `ollama` starts the desktop
+  app whenever no server answers and then waits for it — measured in minutes,
+  and `spawnSync` carries no bound of its own. `OLLAMA_CLI_TIMEOUT_MS` in
+  `src/ollama-runtime.mjs` is the one budget for the server-contacting CLI
+  reads, and a call that hits it returns `status: null`, which every caller
+  already reads as "nothing here" rather than as an error.
+
+## A health read outlives the router's own probe, and no longer
+
+The tray's and the Control Center's health read has to sit strictly *above* the
+router's own worst case. `src/router.mjs` answers a `/health` cache miss only
+after `probeService` aborts at 3_000ms, so a client budget of 3_000ms loses
+every photo finish — the router still has to serialise and send the body once
+its probe finally resolves. A hung gateway, which is TCP accepted and no reply,
+then painted the entire router as offline instead of naming the single
+dependency that was down, and the tray kept reporting a healthy router as dead
+until the gateway recovered.
+
+- `DEFAULT_HEALTH_TIMEOUT_MS` in `src/control-health.mjs` is that budget, and
+  `readControlHealth` defaults to it rather than to a second copy of the
+  number. A healthy router answers in about 2ms, so the ceiling only ever
+  applies on the failure path, where the router's own abort returns the real
+  answer long before it.
+- The panel guards its poll with an in-flight flag, so the larger budget cannot
+  pile requests up. Do not widen it further without that guard.
+- `test/control-health.test.mjs` measures the *default* budget against the
+  router's probe, so making the two equal again fails a test instead of a
+  tray.
 
 ## Generated media and scratch output
 

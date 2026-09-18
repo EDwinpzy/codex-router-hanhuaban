@@ -64,7 +64,7 @@ Before replacement, check the worker's current state and confirm it has stopped;
 never overlap two writers for the same work.
 
 Use the read-only `~/.local/share/codex-router/bin/control activity <thread-id>`
-(Windows: `codex-router.ps1 activity <thread-id>` in `%LOCALAPPDATA%\codex-router`)
+(Windows: `codex-router.ps1 activity <thread-id>` in `D:\MyProjects\codex-router`)
 when shell access is available; omit the ID for all requests. It reports active
 requests and up to 128 recent results retained for ten minutes. `lastByteAt`
 tracks raw bytes at the router boundary; `lastEventAt` tracks normalized Responses

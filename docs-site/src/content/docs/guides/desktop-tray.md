@@ -25,6 +25,14 @@ menu-bar panel. Use the tray menu's **Quit** action to end the complete
 Windows/Linux app; quitting the native macOS host also terminates its embedded
 Control Center.
 
+On Windows a Control Center window that was created hidden keeps the off-screen
+placeholder Windows gave it as its normal position, so showing it would publish
+a visible window nobody can see. The reveal therefore clamps the window onto the
+matching display's work area and raises it before focusing: Windows grants
+foreground activation only to the process the user just interacted with, which
+here is the single tray or Start Menu instance rather than the window itself.
+A window already sitting on a display is left exactly where it was put.
+
 Linux tray-only startup verifies the desktop's registered StatusNotifier host.
 If that proof is unavailable or negative, including when the system `gdbus`
 probe is missing, the launch keeps a visible Control Center window instead of
@@ -37,8 +45,14 @@ the process because there is no proven tray surface from which to reopen it.
   request activity, token traffic, and recently observed models.
 - **Usage** provides 7-, 30-, and 90-day token views, provider and model
   breakdowns, and the account limits each connected provider reports.
-- Quota cards use one **Weekly limit** label and one reset line. A reported
-  five-hour window appears as its own **5-hour limit** card.
+- Allowances are one card per connected account: its quota windows top to
+  bottom (**5-hour limit**, **Weekly limit**, **Monthly limit**), then any
+  balances, with the plan named once beside the account. A pool reported as a
+  remaining amount with no cap beside it is shown against the total its cycle
+  opened with, so it reads as a limit rather than as an invented percentage.
+- An account whose own usage report fails keeps its card and names the failure,
+  together with the traffic this router measured for that account, instead of
+  disappearing from the row. Each card links to that account's own console.
 - Provider cards are absent until that provider has a usable OAuth session or
   API key. Unconnected providers remain available only in **Connections**.
 - **Connections** includes a **Use without OpenAI login** switch for new Codex
@@ -204,7 +218,7 @@ otherwise modify — the catch-22 a router reinstall fails with when an earlier
 elevated install left the task readable but not writable. It validates the
 task's principal, its logon type, and that its action is a genuine companion
 (recognized by shape, so repairing from a dev checkout whose task points at
-`%LOCALAPPDATA%\codex-router` is allowed), then performs a UAC-elevated DACL
+`D:\MyProjects\codex-router` is allowed), then performs a UAC-elevated DACL
 repair and finishes by rebuilding or reinstalling the companion. If you only
 meant to fix permissions, expect that reinstall to follow. When Task Scheduler
 cannot answer at all, `tray status` prints a JSON document with `"state":
@@ -217,8 +231,9 @@ companion looks like it never started.
 The app discovers the router checkout from `MODEL_ROUTER_SOURCE_ROOT`, a saved
 bundle pointer, the source tree during development, or the standard install
 location (`%LOCALAPPDATA%\codex-router` on Windows and
-`~/.local/share/codex-router` on Linux). It displays a useful offline state when
-the checkout or router service is unavailable.
+`~/.local/share/codex-router` on Linux; on this workstation the installed
+checkout is `D:\MyProjects\codex-router`). It displays a useful offline state
+when the checkout or router service is unavailable.
 
 # Credential safety
 

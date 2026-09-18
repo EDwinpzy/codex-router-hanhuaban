@@ -6,6 +6,9 @@ dist/
 *.log
 *.tmp
 .electron-shots/
+# Scratch notes a local agent helper keeps beside the checkout. Not source, and
+# a blanket `git add -A` used to sweep them into a commit.
+.workbuddy/
 release/
 generated/
 

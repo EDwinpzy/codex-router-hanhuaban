@@ -9,7 +9,12 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, "../..");
 const appRoot = path.join(repositoryRoot, "apps/control-center");
 const distRoot = path.join(appRoot, "dist");
-const fixtureSource = readFileSync(path.join(appRoot, "test/renderer.test.mjs"), "utf8");
+// Normalized to LF before matching. A Windows checkout with `core.autocrlf=true`
+// hands this file CRLF, and every pattern below -- the fixture span and the two
+// fixture edits -- is written against a bare `\n`, so the capture used to die
+// with "Could not locate the Control Center's sanitized renderer fixture."
+const fixtureSource = readFileSync(path.join(appRoot, "test/renderer.test.mjs"), "utf8")
+  .replace(/\r\n/g, "\n");
 const fixtureMatch = fixtureSource.match(
   /const bridgeSource = String\.raw`([\s\S]*?)`;\n\nfunction mimeType/,
 );
@@ -22,8 +27,31 @@ if (!existsSync(path.join(distRoot, "index.html"))) {
   throw new Error("Build apps/control-center before capturing screenshots.");
 }
 
+// The fixture this script reads is the test suite's, and it deliberately holds
+// almost no traffic: the suite asserts on shapes, not on volume. The two edits
+// below are what turn it into a demo dataset, and each one is a string match
+// against a fixture that keeps moving. A match that misses used to pass through
+// silently and produce thin screenshots -- a nearly empty traffic chart with
+// "Not reported" in half the tiles -- that replaced the published ones. Fail
+// loudly instead, and fix the pattern against the fixture's current shape.
+const demoTrafficMarker = "    active: true,\n    enabledProviders:";
+const demoUsagePattern = /  const providerUsage = \{[\s\S]*?\n  \};\n\n  const record/;
+
+if (!fixtureSource.includes(demoTrafficMarker)) {
+  throw new Error(
+    "The renderer fixture no longer opens with the traffic shape this script augments. "
+      + "Update demoTrafficMarker against apps/control-center/test/renderer.test.mjs.",
+  );
+}
+if (!demoUsagePattern.test(fixtureSource)) {
+  throw new Error(
+    "The renderer fixture no longer defines providerUsage in the shape this script augments. "
+      + "Update demoUsagePattern, or drop the augmentation and capture the suite's own data.",
+  );
+}
+
 const bridgeSource = fixtureMatch[1].replace(
-  "    active: true,\n    enabledProviders:",
+  demoTrafficMarker,
   `    active: true,
     usageEvents: Array.from({ length: 18 }, (_, index) => {
       const inputTokens = 7_400 + (index * 930) + ((index % 4) * 1_700);
@@ -44,7 +72,7 @@ const bridgeSource = fixtureMatch[1].replace(
     }),
     enabledProviders:`,
 ).replace(
-  /  const providerUsage = \{[\s\S]*?\n  \};\n\n  const record/,
+  demoUsagePattern,
   `  const providerUsage = {
     fetchedAt: new Date().toISOString(),
     providers: [{
@@ -141,6 +169,12 @@ const page = await browser.newPage({
 await page.addInitScript(() => {
   localStorage.setItem("model-router-control-center-theme", "light");
   localStorage.setItem("model-router-control-center-view", "dashboard");
+  // The site these screenshots feed is English, and every locator below drives
+  // the UI by its English accessible names. Without this the app follows the
+  // operator's system language -- a zh-CN workstation rendered the whole
+  // Control Center in Chinese and the navigation locator timed out -- so the
+  // capture states the language it is capturing instead of inheriting one.
+  localStorage.setItem("codex-router-language", "en");
 });
 
 try {

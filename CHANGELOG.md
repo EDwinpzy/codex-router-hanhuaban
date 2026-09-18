@@ -2,6 +2,107 @@
 
 ## Unreleased
 
+- **opencode's plan-usage card survives the provider's own 503 bursts.** Its
+  usage route is served by opencode's aggregation backend rather than by its
+  inference edge, and that backend refuses in bursts of minutes: one measured
+  burst answered `503 Go usage is unavailable` on ten of twelve consecutive
+  probes, while seven of eight succeeded on the same key and session a few
+  minutes later. The router read that endpoint once per refresh, so a two-minute
+  upstream fault arrived as a blank card for as long as it lasted. The route is
+  now retried three times inside a 4s window -- the budget fits the Control
+  Center's 20s account read, and a 4xx is still reported after one attempt
+  because it will read the same next time -- and the last reading that produced
+  windows is remembered in `provider-usage-cache.json`. A remembered reading is
+  served under the `stale` status with the instant it was taken, never as
+  `available`, and only for windows that are still open: every quota row carries
+  its own reset time, so a window that has already reset is dropped rather than
+  shown. A window that is still open can only have accumulated more usage since
+  it was read, so what a caller shows from the cache understates consumption and
+  never overstates headroom. With nothing remembered the failure reaches the
+  card unchanged, which is what every other provider still does.
+  `test/provider-account-usage.test.mjs` covers the retry, the one-attempt 4xx,
+  the fallback, the dropped reset window, and the cold-cache failure.
+- **The Windows probes behind a status refresh no longer open a console
+  window.** `windowsHide` now rides on the local-model reads and removal, the
+  `nvidia-smi` memory probe, the Ollama runtime probes and the `winget` update
+  check, the vision-bridge reads and pull, the caller-key and catalog refreshes,
+  `tasklist`, `schtasks.exe`, and every spawn in `src/control.mjs`. The flag is
+  what passes `CREATE_NO_WINDOW` down, and it is a correctness flag rather than
+  styling: a console application started from a process that owns no console --
+  the Windows service runs under `wscript.exe //B`, the tray and the Control
+  Center are GUI binaries -- allocates a new console, and Windows Terminal draws
+  that window on screen for as long as the probe lives. A plain status refresh
+  therefore made a terminal appear and vanish once per `ollama list`, and a call
+  site that drops the flag is invisible to POSIX CI,
+  `test/windows-console-hidden.test.mjs` drives the real exported functions and
+  reads the options each one hands to an injected spawn, so an omission fails in
+  the suite instead of on somebody's screen. This is not the whole inventory
+  yet: the repair and update paths in `src/doctor.mjs`, `src/support-bundle.mjs`,
+  `src/install-manifest.mjs`, `src/update.mjs`, and `src/service.mjs` still
+  spawn without the flag.
+- **A stalled Ollama CLI degrades local reads instead of hanging its caller.**
+  On Windows the CLI starts the Ollama desktop app whenever no server answers
+  and then waits for it, and that wait has been measured in minutes. `spawnSync`
+  carries no bound of its own, so one unbounded `ollama list` held the Control
+  Center's snapshot past its budget and painted a timeout over a router whose
+  only problem was local model software. `OLLAMA_CLI_TIMEOUT_MS` in
+  `src/ollama-runtime.mjs` is now the single bound that the metadata read, the
+  installed inventory, and the running-model list all pass, and a call that hits
+  it comes back as `status: null` -- "nothing here", the same degradation a
+  missing CLI already produced, never a thrown error (`test/local-llm.test.mjs`).
+- **The tray and the Control Center wait out the router's own probe before
+  calling it offline.** The router answers a `/health` cache miss only after
+  aborting its 3s probe of each downstream service, so a client budget equal to
+  that probe lost every photo finish: a wedged gateway -- TCP accepted, no
+  reply, which is what a hung LiteLLM looks like -- painted the entire router as
+  offline instead of naming the single dependency that was down. The client
+  budget is now `DEFAULT_HEALTH_TIMEOUT_MS` in `src/control-health.mjs`, it sits
+  strictly above the router's probe, and `readControlHealth` actually defaults to
+  it rather than to a second copy of `3_000`. A healthy router still answers in
+  about 2ms, so the ceiling only applies on the failure path, and the panel
+  guards its poll with an in-flight flag so a larger budget cannot pile requests
+  up (`test/control-health.test.mjs`).
+- **The allowance section is one card per account, and a failed usage report no
+  longer deletes the account.** `apps/control-center/src/pages/account-allowances.tsx`
+  now owns the cards, their window ordering, their reset lines, and their
+  per-account dashboard link, so the Usage page and the Dashboard render the
+  same facts instead of two implementations that drift. An account whose own
+  usage API fails keeps its seat in the row and names the failure with the
+  router's measured traffic for that account, because dropping the card
+  collapsed the row to two columns and read as an account that had gone away
+  rather than as a request that failed. The card row is three equal columns at
+  full width, stepping down to two and then one as the window narrows, so a
+  plan with a single window cannot be stretched to look empty. The Dashboard
+  repeats the same section above its traffic panel
+  (`apps/control-center/test/renderer.test.mjs`).
+- **Command Code's monthly credit pool is reported as the limit it is.** The
+  billing endpoint reports `credits.monthlyCredits` as a *remaining* amount with
+  no cap, no `used`, and no reset beside it, so the old card showed it as a
+  "Plan credits" balance next to the two windows. `src/provider-credit-cycles.mjs`
+  now remembers what the pool held when its cycle opened -- a pool that only
+  falls keeps its total, a pool that grows is a new cycle at the value it grew
+  to -- and the card renders that total as a **Monthly limit** window, which is
+  the number that actually ends an afternoon. Credits bought or granted on top
+  of the plan live beside the pool rather than inside it, so a top-up no longer
+  moves the monthly percentage and shows as its own **Extra credits** row. A
+  provider seen for the first time has no earlier reading, so its first cycle
+  opens looking unspent and corrects itself at the first refill -- the honest
+  failure, since a hardcoded plan amount goes stale the moment the provider
+  ships another one (`test/provider-credit-cycles.test.mjs`).
+- **opencode Go's rolling window is named the 5-hour limit the plan calls it.**
+  The usage payload calls the short window "rolling" and never states its span,
+  so the card invented a generic "Rolling limit" next to a weekly and a monthly
+  one. Every account's three windows now line up under one set of names -- 5-hour
+  limit, Weekly limit, Monthly limit -- and the Control Center's Chinese overlay
+  follows.
+- **A Control Center window Windows parked off-screen is brought back onto a
+  display before it is shown.** A window created hidden keeps Windows' off-screen
+  placeholder as its normal position, so revealing it published `visible: true`
+  for a window nobody could see -- indistinguishable from a frozen app. The
+  reveal now clamps the bounds onto the matching display's work area and raises
+  the window, because Windows denies foreground activation to a process that did
+  not receive the user's own input, which is exactly the single instance the tray
+  and the Start Menu hand the request to (`apps/control-center/electron/main.mjs`).
 - **An Anthropic Messages route no longer loses the turn over one tool entry
   LiteLLM could not give a schema to.** `Union Alpha Free (opencode Go)`
   travels the Messages protocol, so Codex's Responses tool list is mapped into
